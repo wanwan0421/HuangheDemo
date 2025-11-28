@@ -7,8 +7,14 @@ import Index_system from '../assets/Index_system.png';
 import Intelligent_decision from '../assets/Intelligent_decision.png';
 import { useOutletContext } from 'react-router-dom';
 import AnimatedContent from '../components/AnimatedContent';
+import NNULogo from '../assets/NNU.png';
+import NSCCZZ from '../assets/NSCCZZ.png';
 
-const carouselImages = [huanghe1, huanghe2, huanghe3]
+const carouselImages = [huanghe1, huanghe2, huanghe3];
+const logos =[
+    {src: "src/assets/NSCCZZ.png", url: "http://nscc.zzu.edu.cn/"},
+    {src: "src/assets/NNU.png", url: "https://www.njnu.edu.cn/"},
+];
 
 interface TailwindCarouselProps {
     images: string[];
@@ -164,7 +170,7 @@ export default function Home() {
                             </h2>
                             <p className="mt-6 text-lg/8 text-sans text-gray-200 leading-6">
                                 Focus on the integration of diverse and heterogeneous simulation resources in the Yellow River Basin,
-                                and promote the collaborative convergence and integration of multi-source simulation resources through service-oriented packaging, cross platform deployment and unified data model construction.
+                                and promote the collaborative integration of resources through service-oriented packaging, cross platform deployment and unified data model construction.
                             </p>
                             <div className="mt-10 flex items-center justify-center gap-x-6 lg:justify-start">
                                 <a
@@ -290,8 +296,8 @@ export default function Home() {
                                 Intelligent simulation process of multi-agent
                             </h2>
                             <p className="mt-6 text-lg/8 text-sans text-gray-200 leading-6">
-                                Based on the standardized model resources and multi-agent collaborative coupling technology, the collaborative decision-making of multiple models is realized,
-                                the model coupling and adaptation strategies are designed, and the automatic process construction and intelligent solution of geographical simulation problems are realized.
+                                Based on the standardized resources and multi-agent coupling technology, the collaborative decision-making of multiple models is realized,
+                                and the automatic process construction and intelligent solution of geographical simulation problems are realized.
                             </p>
                             <div className="mt-10 flex items-center justify-center gap-x-6 lg:justify-start">
                                 <a
@@ -313,6 +319,29 @@ export default function Home() {
                     </div>
                 </div>
             </AnimatedContent>
+
+            <div className="text-center max-w-7xl mx-auto px-4 py-16 sm:py-20">
+                <h1 className={`font-light tracking-tight text-center text-[40px] ${textColor}`}>
+                    Cooperation Partners
+                </h1>
+                <div className="h-px w-[180px] mx-auto my-4 bg-linear-to-r from-transparent via-white to-transparent"></div>
+                <div className="flex flex-wrap justify-center gap-8 mt-10">
+                    {logos.map((logo, i) => (
+                        <a
+                            key={i}
+                            href={logo.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="h-20 w-80 flex items-center justify-center cursor-pointer"
+                        >
+                            <img
+                                src={logo.src}
+                                className="max-h-full max-w-full object-contain transition duration-300 hover:scale-[1.05] hover:opacity-100 opacity-80"
+                            />
+                        </a>
+                    ))}
+                </div>
+            </div>
         </div>
     );
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, useLocation, Link } from 'react-router-dom';
 import logo from '../assets/logo.png';
 import user from '../assets/user.png';
+import FloatingLines from './FloatingLines';
 
 // Navigation items structure remains the same
 const navItems = [
@@ -180,7 +181,7 @@ export default function Layout() {
 
       {/* Footer area */}
       <footer className={`text-center py-4 text-sm ${footerBg}`}>
-        &copy; {new Date().getFullYear()} Created by Tailwind CSS Conversion
+        &copy; {new Date().getFullYear()} Created by OpenGMS
       </footer>
     </div>
   );
