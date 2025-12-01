@@ -1,125 +1,153 @@
-import { CheckIcon } from '@heroicons/react/20/solid'
+import React, { useState } from "react";
+import { useOutletContext } from 'react-router-dom';
 
-const tiers = [
-  {
-    name: 'Hobby',
-    id: 'tier-hobby',
-    href: '#',
-    priceMonthly: '$29',
-    description: "The perfect plan if you're just getting started with our product.",
-    features: ['25 products', 'Up to 10,000 subscribers', 'Advanced analytics', '24-hour support response time'],
-    featured: false,
-  },
-  {
-    name: 'Enterprise',
-    id: 'tier-enterprise',
-    href: '#',
-    priceMonthly: '$99',
-    description: 'Dedicated support and infrastructure for your company.',
-    features: [
-      'Unlimited products',
-      'Unlimited subscribers',
-      'Advanced analytics',
-      'Dedicated support representative',
-      'Marketing automations',
-      'Custom integrations',
-    ],
-    featured: true,
-  },
-]
+export default function IntelligentDecision() {
+  const [messages, setMessages] = useState<string[]>([]);
+  const [input, setInput] = useState("");
 
-function classNames(...classes: (string | boolean | undefined | null)[]) {
-  return classes.filter(Boolean).join(' ')
-}
+  // Pop up input slot after model recommendation
+  const [recommendedModel, setReconmmendedModel] = useState<string | null>(null);
+  const [requiredInputs, setRequiredInputs] = useState<string[]>([]);
 
-export default function Example() {
+  // Store user uploaded files
+  const [uploadedData, setUploadedData] = useState<Record<string, File | null>>({});
+
+  // Show running state
+  const [runStatus, setRunStatus] = useState<String[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+
+  // Simulate LLM to recommend model
+  const simulateLLMRecommend = () => {
+    setReconmmendedModel("城市扩张预测模拟模型");
+    setRequiredInputs(["土地利用栅格.tif", "人口密度数据.csv", "交通路网.shp"]);
+  }
+
+  // User clik running button
+  const handleRun = () => {
+    setIsRunning(true);
+    setRunStatus(["检查数据格式...", "数据预处理中...", "模型运行...", "输出结果生成中..."]);
+
+    setTimeout(() => {
+      setRunStatus(prev => [...prev, "模型运行完成！"]);
+    }, 3500);
+  }
+
   return (
-    <div className="relative isolate bg-gray-900 px-6 py-24 sm:py-32 lg:px-8">
-      <div aria-hidden="true" className="absolute inset-x-0 -top-3 -z-10 transform-gpu overflow-hidden px-36 blur-3xl">
-        <div
-          style={{
-            clipPath:
-              'polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)',
-          }}
-          className="mx-auto aspect-1155/678 w-288.75 bg-linear-to-tr from-[#ff80b5] to-[#9089fc] opacity-20"
-        />
-      </div>
-      <div className="mx-auto max-w-4xl text-center">
-        <h2 className="text-base/7 font-semibold text-indigo-400">Pricing</h2>
-        <p className="mt-2 text-5xl font-semibold tracking-tight text-balance text-white sm:text-6xl">
-          Choose the right plan for you
-        </p>
-      </div>
-      <p className="mx-auto mt-6 max-w-2xl text-center text-lg font-medium text-pretty text-gray-400 sm:text-xl/8">
-        Choose an affordable plan that’s packed with the best features for engaging your audience, creating customer
-        loyalty, and driving sales.
-      </p>
-      <div className="mx-auto mt-16 grid max-w-lg grid-cols-1 items-center gap-y-6 sm:mt-20 sm:gap-y-0 lg:max-w-4xl lg:grid-cols-2">
-        {tiers.map((tier, tierIdx) => (
-          <div
-            key={tier.id}
-            className={classNames(
-              tier.featured ? 'relative bg-gray-800' : 'bg-white/2.5 sm:mx-8 lg:mx-0',
-              tier.featured
-                ? ''
-                : tierIdx === 0
-                  ? 'rounded-t-3xl sm:rounded-b-none lg:rounded-tr-none lg:rounded-bl-3xl'
-                  : 'sm:rounded-t-none lg:rounded-tr-3xl lg:rounded-bl-none',
-              'rounded-3xl p-8 ring-1 ring-white/10 sm:p-10',
-            )}
+    <div className="flex flex-1 overflow-hidden">
+
+      {/* ------------------------------- Left Sidebar ------------------------------- */}
+      <aside className="w-72 bg-gray-900 text-white flex flex-col p-4">
+
+        {/* <h3 className="font-semibold mb-2">🧩 Simulation Resources</h3>
+        <div className="space-y-2 flex-1 overflow-auto">
+          <button className="w-full p-2 rounded bg-gray-800 hover:bg-gray-700">导入数据</button>
+          <button className="w-full p-2 rounded bg-gray-800 hover:bg-gray-700">模型库</button>
+        </div>
+        
+        <hr className="my-3 opacity-40"/> */}
+
+        <h3 className="font-semibold mb-3">📁 Historical Records</h3>
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          {[1,2,3].map(i => (
+            <button key={i} className="w-full text-left p-2 rounded hover:bg-gray-700">
+              会话记录 {i}
+            </button>
+          ))}
+        </div>
+
+        <button 
+          onClick={simulateLLMRecommend}
+          className="mt-6 bg-green-600 p-2 rounded hover:bg-green-700">
+          ⚡ 模拟LLM推荐模型
+        </button>
+      </aside>
+
+
+      {/* ------------------------------- Middle Chat Panel ------------------------------- */}
+      <main className="flex-1 flex flex-col border-r border-gray-300">
+
+        <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-white">
+          {messages.length === 0 && (
+            <p className="text-gray-400 text-center mt-20">
+              👋 Enter your instructions to start the decision process
+              <br/>(example: help me predict land use change)
+            </p>
+          )}
+          {messages.map((msg, i) => (
+            <div key={i} className="p-3 max-w-xl rounded-lg bg-blue-50">
+              {msg}
+            </div>
+          ))}
+        </div>
+
+        <div className="p-4 border-t bg-white flex items-center gap-3">
+          <input
+            value={input}
+            onChange={(e)=>setInput(e.target.value)}
+            className="flex-1 p-2 border rounded focus:ring-2 ring-blue-400 text-black"
+          />
+
+          <button
+            onClick={()=>{
+              if(input.trim()){
+                setMessages([...messages,input]);
+                setInput("");
+              }
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-600"
           >
-            <h3
-              id={tier.id}
-              className={classNames(tier.featured ? 'text-indigo-400' : 'text-indigo-400', 'text-base/7 font-semibold')}
-            >
-              {tier.name}
-            </h3>
-            <p className="mt-4 flex items-baseline gap-x-2">
-              <span
-                className={classNames(
-                  tier.featured ? 'text-white' : 'text-white',
-                  'text-5xl font-semibold tracking-tight',
-                )}
-              >
-                {tier.priceMonthly}
-              </span>
-              <span className={classNames(tier.featured ? 'text-gray-400' : 'text-gray-400', 'text-base')}>/month</span>
-            </p>
-            <p className={classNames(tier.featured ? 'text-gray-300' : 'text-gray-300', 'mt-6 text-base/7')}>
-              {tier.description}
-            </p>
-            <ul
-              role="list"
-              className={classNames(
-                tier.featured ? 'text-gray-300' : 'text-gray-300',
-                'mt-8 space-y-3 text-sm/6 sm:mt-10',
-              )}
-            >
-              {tier.features.map((feature) => (
-                <li key={feature} className="flex gap-x-3">
-                  <CheckIcon
-                    aria-hidden="true"
-                    className={classNames(tier.featured ? 'text-indigo-400' : 'text-indigo-400', 'h-6 w-5 flex-none')}
-                  />
-                  {feature}
-                </li>
-              ))}
-            </ul>
-            <a
-              href={tier.href}
-              aria-describedby={tier.id}
-              className={classNames(
-                tier.featured
-                  ? 'bg-indigo-500 text-white hover:bg-indigo-400 focus-visible:outline-indigo-500'
-                  : 'bg-white/10 text-white inset-ring inset-ring-white/5 hover:bg-white/20 focus-visible:outline-white/75',
-                'mt-8 block rounded-md px-3.5 py-2.5 text-center text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 sm:mt-10',
-              )}
-            >
-              Get started today
-            </a>
+            Send
+          </button>
+        </div>
+      </main>
+
+      {/* ------------------------------- Right InputSlots + Result Panel ------------------------------- */}
+      <section className="w-[32%] bg-white flex flex-col shadow-inner border-l p-4">
+        {/* Now, LLM don't recommend any model —— recommendedModel: false; isRunning: false */}
+        {!recommendedModel && !isRunning && (
+          <div className="flex-1 flex flex-col justify-center items-center text-gray-400">
+            <p className="text-lg font-medium">⏳ Wait for the LLM to recommend model... </p>
           </div>
-        ))}
-      </div>
+        )}
+
+        {/* Now, LLM has recommend the most suitable model, and user needs to upload data */}
+        {recommendedModel && !isRunning && (
+          <div>
+            <div>
+              <h3 className="text-black font-bold mb-2">Model has been recommend: {recommendedModel}</h3>
+              <p className="text-sm text-black mb-3">Please upload the data required by the model</p>
+
+              {requiredInputs.map(key => (
+                <div key={key} className="flex items-center gap-2 mb-3 text-black">
+                  <span className="w-40 font-medium text-black">{key}</span>
+                  <input type="file"
+                         onChange={e=>setUploadedData(pre=>({...pre, [key]: e.target.files?.[0] ?? null }))}
+                         className="border rounded p-1 flex-1"
+                  >
+                  </input>
+                  {uploadedData[key] && <span className="text-green-600">✔</span>}
+                </div>
+              ))}
+
+              <button disabled={Object.keys(uploadedData).length < requiredInputs.length}
+                onClick={handleRun}
+                className="w-full mt-4 p-2 bg-green-600 text-white rounded disabled:bg-gray-400">
+                  Running
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Now, LLM has recommend the most suitable model, and user has uploaded data */}
+        {recommendedModel && isRunning && (
+          <div className="space-y-3">
+            <h3 className="text-black font-bold mb-2">Model execute process</h3>
+            {runStatus.map((s,i) => (
+              <div key={i} className="p-2 border rounded bg-gray-50 text-black">{s}</div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
-  )
+  );
 }

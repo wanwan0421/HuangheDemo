@@ -168,7 +168,7 @@ export default function Layout() {
       </header>
 
       {/* Content area */}
-      <main className="flex-1">
+      <main className="flex-1 h-screen flex flex-col">
         {/* Breadcrumb (simplified with Tailwind) */}
         {getBreadcrumbItems(currentPath).map((item, index) => (
           <li key={index} className="flex items-center">

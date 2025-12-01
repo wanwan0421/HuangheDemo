@@ -220,7 +220,7 @@ export default function Resources() {
             <nav aria-label='Pagination' className='isolate inline-flex -space-x-px rounded-md'>
               <button disabled={currentPage === 1}
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              className={`relative inline-flex items-center rounded-l-md px-2 py-2 ${textColor} inset-ring inset-ring-gray-700 focus:z-20 focus:outline-offset-0 transition ${currentPage === 1 ? "cursor-not-allowed" : "hover:bg-gray-200"}`}>
+              className={`relative inline-flex items-center rounded-l-md px-2 py-2 ${textColor} border border-gray-700 focus:z-20 focus:outline-offset-0 transition ${currentPage === 1 ? "cursor-not-allowed" : "hover:bg-gray-200"}`}>
                 Previous
               </button>
 
@@ -247,11 +247,11 @@ export default function Resources() {
                       <React.Fragment key={p}>
                         <button
                           onClick={() => setCurrentPage(p)}
-                          className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold inset-ring inset-ring-gray-700 transition ${textColor}
-                            ${currentPage === p ? "bg-blue-600 border-blue-600" : "hover:bg-gray-200/40"}`}>
+                          className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold transition ${textColor}
+                            ${currentPage === p ? "bg-blue-600 border-blue-600" : "hover:bg-gray-200/40 border border-gray-700"}`}>
                           {p}
                         </button>
-                        {isGap && <span className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold inset-ring inset-ring-gray-700 ${textColor}`}>...</span>}
+                        {isGap && <span className={`inline-flex items-center px-4 py-2 text-sm font-semibold border border-gray-700 ${textColor}`}>...</span>}
                       </React.Fragment>
                     );
                   });
@@ -262,7 +262,7 @@ export default function Resources() {
               <button
                 disabled={currentPage === totalPages}
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                className={`relative inline-flex items-center rounded-r-md px-2 py-2 ${textColor} inset-ring inset-ring-gray-700 ${currentPage === totalPages ? "cursor-not-allowed" : "hover:bg-gray-200/40"}`}>
+                className={`relative inline-flex items-center rounded-r-md px-2 py-2 ${textColor} border border-gray-700 ${currentPage === totalPages ? "cursor-not-allowed" : "hover:bg-gray-200/40"}`}>
                 Next
               </button>
             </nav>

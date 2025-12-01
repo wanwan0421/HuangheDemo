@@ -48,7 +48,7 @@ const TailwindCarousel: React.FC<TailwindCarouselProps> = ({ images }) => {
     };
 
     return (
-        <div className="relative w-full overflow-hidden">
+        <div className="relative w-full flex flex-1 overflow-hidden">
 
             <div className="absolute top-2/5 left-1/2 -translate-x-1/2 -translate-y-1/2 px-6 max-w-8xl w-full mx-auto text-center z-20">
                 <h1 className={'mt-4 font-sans font-extrabold tracking-tight text-center text-[45px] text-white text-shadow-lg'}>
