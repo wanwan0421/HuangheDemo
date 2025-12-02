@@ -110,7 +110,7 @@ export default function Resources() {
   const currentData = resourceList.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex flex-1 flex-col">
       <div className="bg-gray-100/20 shadow-ms shadow-white p-6 min-h-[100px]">
         <p className={`font-light ${textColor} leading-relaxed text-lg text-[16px]`}>
           Focus on the integration of diverse and heterogeneous simulation resources in the Yellow River Basin,

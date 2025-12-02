@@ -152,3 +152,22 @@
     animation: star-movement-top var(--speed, 6s) linear infinite alternate;
   }
 }
+
+/* 只影响聊天输入框区域 */
+.chat-textarea::-webkit-scrollbar {
+  width: 5px; /* 更窄，避免挤压 */
+}
+
+.chat-textarea::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 10px; /* 内缩，让滚动条不贴住边缘 */
+}
+
+.chat-textarea::-webkit-scrollbar-thumb {
+  background: #c4c4c4;
+  border-radius: 4px;
+}
+
+.chat-textarea::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Outlet, useLocation, Link } from 'react-router-dom';
 import logo from '../assets/logo.png';
 import user from '../assets/user.png';
-import FloatingLines from './FloatingLines';
 
 // Navigation items structure remains the same
 const navItems = [
@@ -36,6 +35,7 @@ export default function Layout() {
 
   // Determine the current path for active link highlighting
   const currentPath = location.pathname;
+  const showFooter = currentPath !== '/decision';
 
   // Tailwind classes for theme-dependent background and text color
   const themeBg = darkMode ? 'bg-black text-white' : 'bg-white text-gray-800';
@@ -44,7 +44,7 @@ export default function Layout() {
   const menuBg = darkMode ? 'bg-black' : 'bg-white';
 
   return (
-    <div className={`min-h-screen flex flex-col transition-colors duration-300 ${themeBg}`}>
+    <div className={`min-h-screen transition-colors duration-300 ${themeBg}`}>
 
       {/* Header area (Sticky with flex layout) */}
       <header className={`sticky top-0 z-50 ${headerBg} shadow`}>
@@ -168,7 +168,7 @@ export default function Layout() {
       </header>
 
       {/* Content area */}
-      <main className="flex-1 h-screen flex flex-col">
+      <main>
         {/* Breadcrumb (simplified with Tailwind) */}
         {getBreadcrumbItems(currentPath).map((item, index) => (
           <li key={index} className="flex items-center">
@@ -176,13 +176,15 @@ export default function Layout() {
           </li>
         ))}
         {/* Router area */}
-        <Outlet context={{ darkMode }}/>
+          <Outlet context={{ darkMode }}/>
       </main>
 
       {/* Footer area */}
-      <footer className={`text-center py-4 text-sm ${footerBg}`}>
+      {showFooter && (
+        <footer className={`text-center py-4 text-sm ${footerBg}`}>
         &copy; {new Date().getFullYear()} Created by OpenGMS
       </footer>
+      )}
     </div>
   );
 }
