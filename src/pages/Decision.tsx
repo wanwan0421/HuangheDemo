@@ -1,17 +1,18 @@
 import React, { useState } from "react";
 import ChatInput from "../components/ChatInput";
-import { SquarePen, Search } from "lucide-react";
+import { SquarePen, Search, Sparkles, Activity } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import ModelExecuteProcess from "../components/ModelExecuteProcess"
 
 interface InputField {
   name: string;
   key: string;
-  type: "file" | "text" | "number";   // 你也可以加 "select"
+  type: "file" | "text" | "number";
 }
 
 export default function IntelligentDecision() {
   const [activaChatId, setActiveChatId] = useState<number | null>(1);
   const [messages, setMessages] = useState<string[]>([]);
-  const [input, setInput] = useState("");
 
   // Pop up input slot after model recommendation
   const [recommendedModel, setReconmmendedModel] = useState<string | null>(null);
@@ -37,16 +38,51 @@ export default function IntelligentDecision() {
 
   // User clik running button
   const handleRun = () => {
+    setRunStatus([]);
     setIsRunning(true);
-    setRunStatus(["检查数据格式...", "数据预处理中...", "模型运行...", "输出结果生成中..."]);
+    // Simulate model execution process update...
+    const steps = ["Check data format", "Data preprocessing", "Model core computing", "Output result generation in progress"];
+    let i = 0;
+    
+    const executeStep = () => {
+      if (i < steps.length) {
+        console.log("i:", i);
+        console.log("steps[i]:", steps[i]);
+        setRunStatus(prev => {
+          if (steps[i]) {
+            return [...prev, steps[i]]
+          }
+          return prev;
+        });
 
-    setTimeout(() => {
-      setRunStatus(prev => [...prev, "模型运行完成！"]);
-    }, 3500);
+        i++;
+        setTimeout(executeStep, 1000);
+      } else {
+        console.log("Process finished logic triggered.");
+        setRunStatus(prev => {
+          if (prev[prev.length - 1] !== "Model execution finished!") {
+            return [...prev, "Model execution finished!"]
+          } return prev;
+        });
+      }
+    }
+    setTimeout(executeStep, 100);
+
+    // const interval = setInterval(() => {
+    //   if (i < steps.length) {
+    //     console.log("i:", i);
+    //     console.log("steps[i]:", steps[i]);
+    //     setRunStatus(prev => [...prev, steps[i]]);
+    //     i++;
+    //   } else {
+    //     clearInterval(interval);
+    //     setRunStatus(prev => [...prev, "Model execution finished!"]); // 将最后一步替换为完成
+    //   }
+    // }, 1000); // update the process every 800ms
   }
 
   return (
-    <div className="flex flex-1 h-[calc(100vh-64px)] overflow-hidden">
+    <div className="flex flex-1 h-[calc(100vh-64px)] overflow-hidden bg-white">
 
       {/* ------------------------------- Left Sidebar ------------------------------- */}
       <aside className="w-72 bg-gray-900 text-white flex flex-col p-3">
@@ -120,101 +156,115 @@ export default function IntelligentDecision() {
 
       {/* ------------------------------- Right InputSlots + Result Panel ------------------------------- */}
       {/* Now, LLM don't recommend any model —— recommendedModel: false; isRunning: false */}
-      {recommendedModel && !isRunning && (
-        <section className="w-[32%] bg-white flex flex-col">
-          <div className="flex-1 bg-gray-100/50 rounded-lg m-5 p-4 shadow">
-            {/* Now, LLM has recommend the most suitable model, and user needs to upload data */}
-            {recommendedModel && !isRunning && (
-              <div className="space-y-5">
-                <div className="p-4 rounded-xl shadow bg-gray-50 border">
-                  <h3 className="text-black font-bold mb-2">Recommend Model</h3>
-                  <p className="text-xl text-black font-semibold mb-2">{recommendedModel}</p>
+      <AnimatePresence>
+        {recommendedModel && (
+          <motion.section
+            initial={{ opacity: 0, x: 80 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 80 }}
+            transition={{ duration: 0.45, ease: "easeOut" }}
+            className="w-[32%] flex flex-col">
+            <div className="flex-1 bg-gray-100/50 rounded-lg m-5 p-4 shadow">
+              {/* Now, LLM has recommend the most suitable model, and user needs to upload data */}
+              {recommendedModel && !isRunning && (
+                <div className="space-y-3">
+                  <div className="w-full flex items-center text-black space-x-2">
+                    <Sparkles size={20} />
+                    <h3 className="text-xl font-bold">Recommended Model</h3>
+                  </div>
+                  <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-gray-900 via-gray-500 to-transparent"></div>
+
+                  <p className="text-lg text-black font-semibold">{recommendedModel}</p>
+                  <p className="text-sm italic text-gray-600">Please upload the data required by the model</p>
+
+                  <div className="space-y-3 flex-1 overflow-y-auto">
+                    {requiredInputs.map(item => {
+                      const value = uploadedData[item.key];
+
+                      return (
+                        <div key={item.key} className="p-3 bg-white rounded-lg shadow border flex items-center gap-3 text-black h-13">
+
+                          {/* 字段名 */}
+                          <span className="font-medium w-45">{item.name}</span>
+
+                          {/* --- 文件类型 --- */}
+                          {item.type === "file" && (
+                            <>
+                              <label className="cursor-pointer flex justify-center items-center h-8 px-2 bg-blue-400 hover:bg-blue-600 text-white rounded-lg text-sm ">
+                                上传文件
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  onChange={e =>
+                                    setUploadedData(p => ({
+                                      ...p,
+                                      [item.key]: e.target.files?.[0] ?? null
+                                    }))
+                                  }
+                                />
+                              </label>
+
+                              {value instanceof File ? (
+                                <span className="text-green-700 text-sm truncate max-w-[120px]">
+                                  {value.name}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 text-sm">未选择文件</span>
+                              )}
+                            </>
+                          )}
+
+                          {/* --- 文本类型 --- */}
+                          {item.type === "text" && (
+                            <input
+                              type="text"
+                              className="flex-1 border rounded px-2 py-1"
+                              onChange={e => setUploadedData(p => ({ ...p, [item.key]: e.target.value }))}
+                              placeholder="请输入文本..."
+                            />
+                          )}
+
+                          {/* --- 数字类型 --- */}
+                          {item.type === "number" && (
+                            <input
+                              type="number"
+                              className="flex-1 border rounded px-2 py-1"
+                              onChange={e => setUploadedData(p => ({ ...p, [item.key]: Number(e.target.value) }))}
+                              placeholder="请输入数字..."
+                            />
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <button disabled={Object.keys(uploadedData).length < requiredInputs.length}
+                    onClick={handleRun}
+                    className="w-full p-2 bg-green-600 text-white rounded disabled:bg-gray-400">
+                    Running
+                  </button>
                 </div>
+              )}
 
-                <p className="text-sm text-gray-600 mb-2">Please upload the data required by the model</p>
+              {/* Now, LLM has recommend the most suitable model, and user has uploaded data */}
+              {recommendedModel && isRunning && (
+                <div className="space-y-3">
+                  <div className="w-full flex items-center text-black space-x-2">
+                    <Activity size={20} />
+                    <h3 className="text-xl font-bold">Model execution process</h3>
+                  </div>
+                  <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-gray-900 via-gray-500 to-transparent"></div>
 
-                <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
-                  {requiredInputs.map(item => {
-                    const value = uploadedData[item.key];   // ← 正确位置！！
-
-                    return (
-                      <div key={item.key} className="p-3 bg-white rounded-lg shadow border flex items-center gap-3 text-black">
-
-                        {/* 字段名 */}
-                        <span className="font-medium w-40">{item.name}</span>
-
-                        {/* --- 文件类型 --- */}
-                        {item.type === "file" && (
-                          <>
-                            <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm">
-                              上传文件
-                              <input
-                                type="file"
-                                className="hidden"
-                                onChange={e =>
-                                  setUploadedData(p => ({
-                                    ...p,
-                                    [item.key]: e.target.files?.[0] ?? null
-                                  }))
-                                }
-                              />
-                            </label>
-
-                            {value instanceof File ? (
-                              <span className="text-green-700 text-sm truncate max-w-[120px]">
-                                {value.name}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 text-sm">未选择文件</span>
-                            )}
-                          </>
-                        )}
-
-                        {/* --- 文本类型 --- */}
-                        {item.type === "text" && (
-                          <input
-                            type="text"
-                            className="flex-1 border rounded px-2 py-1"
-                            onChange={e => setUploadedData(p => ({ ...p, [item.key]: e.target.value }))}
-                            placeholder="请输入文本..."
-                          />
-                        )}
-
-                        {/* --- 数字类型 --- */}
-                        {item.type === "number" && (
-                          <input
-                            type="number"
-                            className="flex-1 border rounded px-2 py-1"
-                            onChange={e => setUploadedData(p => ({ ...p, [item.key]: Number(e.target.value) }))}
-                            placeholder="请输入数字..."
-                          />
-                        )}
-                      </div>
-                    )
-                  })}
+                  <div className="flex-1 overflow-y-auto pr-2"> 
+                    <ModelExecuteProcess status={runStatus} />
                 </div>
+                </div>
+              )}
+            </div>
+          </motion.section>
 
-
-                <button disabled={Object.keys(uploadedData).length < requiredInputs.length}
-                  onClick={handleRun}
-                  className="w-full p-2 bg-green-600 text-white rounded disabled:bg-gray-400">
-                  Running
-                </button>
-              </div>
-            )}
-
-            {/* Now, LLM has recommend the most suitable model, and user has uploaded data */}
-            {recommendedModel && isRunning && (
-              <div className="space-y-3">
-                <h3 className="text-black font-bold mb-2">Model execute process</h3>
-                {runStatus.map((s, i) => (
-                  <div key={i} className="p-2 border rounded bg-gray-50 text-black">{s}</div>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }
