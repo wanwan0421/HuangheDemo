@@ -47,7 +47,7 @@ const ModelExecuteProcess: React.FC<ModelExecuteProcessProps> = ({ status }) => 
                             </div>
 
                             {/* Content */}
-                            <p className={`pl-5 ${isCompleted || isProcessFinished ? 'text-green-600 font-semibold' : isRunning ? 'text-blue-500 font-semibold' : 'text-gray-400'}`}>
+                            <p className={`pl-5 ${isCompleted || isProcessFinished ? 'text-green-600 font-semibold text-shadow-2xs' : isRunning ? 'text-blue-500 font-semibold' : 'text-gray-400'}`}>
                                 {statusText}
                             </p>
                         </div>

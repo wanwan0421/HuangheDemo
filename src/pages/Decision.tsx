@@ -10,6 +10,20 @@ interface InputField {
   type: "file" | "text" | "number";
 }
 
+// Reducer Action Types
+type Action = { type: 'ADD_STEP', payload: string } | { type: 'RESET' };
+
+function runStatusReducer(state: String[], action: Action): String[] {
+  switch (action.type) {
+    case 'ADD_STEP':
+      return [...state, action.payload];
+    case 'RESET':
+      return [];
+    default:
+      return state;
+  }
+}
+
 export default function IntelligentDecision() {
   const [activaChatId, setActiveChatId] = useState<number | null>(1);
   const [messages, setMessages] = useState<string[]>([]);
@@ -22,7 +36,8 @@ export default function IntelligentDecision() {
   const [uploadedData, setUploadedData] = useState<Record<string, File | string | number | null>>({});
 
   // Show running state
-  const [runStatus, setRunStatus] = useState<String[]>([]);
+  // const [runStatus, setRunStatus] = useState<String[]>([]);
+  const [runStatus, dispatch] = React.useReducer(runStatusReducer, []);
   const [isRunning, setIsRunning] = useState(false);
 
   // Simulate LLM to recommend model
@@ -38,47 +53,28 @@ export default function IntelligentDecision() {
 
   // User clik running button
   const handleRun = () => {
-    setRunStatus([]);
     setIsRunning(true);
-    // Simulate model execution process update...
+    dispatch({ type: 'RESET' });
+
     const steps = ["Check data format", "Data preprocessing", "Model core computing", "Output result generation in progress"];
     let i = 0;
-    
+
     const executeStep = () => {
       if (i < steps.length) {
         console.log("i:", i);
         console.log("steps[i]:", steps[i]);
-        setRunStatus(prev => {
-          if (steps[i]) {
-            return [...prev, steps[i]]
-          }
-          return prev;
-        });
+
+        // 使用dispatch进行同步更新
+        dispatch({ type: 'ADD_STEP', payload: steps[i] });
 
         i++;
         setTimeout(executeStep, 1000);
       } else {
-        console.log("Process finished logic triggered.");
-        setRunStatus(prev => {
-          if (prev[prev.length - 1] !== "Model execution finished!") {
-            return [...prev, "Model execution finished!"]
-          } return prev;
-        });
+        dispatch({ type: 'ADD_STEP', payload: "Model execution finished!" });
       }
     }
-    setTimeout(executeStep, 100);
-
-    // const interval = setInterval(() => {
-    //   if (i < steps.length) {
-    //     console.log("i:", i);
-    //     console.log("steps[i]:", steps[i]);
-    //     setRunStatus(prev => [...prev, steps[i]]);
-    //     i++;
-    //   } else {
-    //     clearInterval(interval);
-    //     setRunStatus(prev => [...prev, "Model execution finished!"]); // 将最后一步替换为完成
-    //   }
-    // }, 1000); // update the process every 800ms
+    // 强制立即启动
+    executeStep();
   }
 
   return (
@@ -168,9 +164,9 @@ export default function IntelligentDecision() {
               {/* Now, LLM has recommend the most suitable model, and user needs to upload data */}
               {recommendedModel && !isRunning && (
                 <div className="space-y-3">
-                  <div className="w-full flex items-center text-black space-x-2">
-                    <Sparkles size={20} />
-                    <h3 className="text-xl font-bold">Recommended Model</h3>
+                  <div className="w-full flex items-center space-x-2">
+                    <Sparkles size={20}  className="text-blue-600"/>
+                    <h3 className="text-xl text-black font-bold">Recommended Model</h3>
                   </div>
                   <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-gray-900 via-gray-500 to-transparent"></div>
 
@@ -249,9 +245,9 @@ export default function IntelligentDecision() {
               {/* Now, LLM has recommend the most suitable model, and user has uploaded data */}
               {recommendedModel && isRunning && (
                 <div className="space-y-3">
-                  <div className="w-full flex items-center text-black space-x-2">
-                    <Activity size={20} />
-                    <h3 className="text-xl font-bold">Model execution process</h3>
+                  <div className="w-full flex items-center space-x-2">
+                    <Activity size={20} className="text-blue-600"/>
+                    <h3 className="text-xl text-black font-bold">Model execution process</h3>
                   </div>
                   <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-gray-900 via-gray-500 to-transparent"></div>
 
