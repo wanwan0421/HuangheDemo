@@ -248,6 +248,7 @@ export interface MenuLeafItem {
 // 定义MenuData结构
 export interface MenuDataItem {
   title: string;
+  id: string[];
   children: (MenuLeafItem | MenuDataItem)[]; // 子节点可以是MenuLeafItem或MenuDataItem
 }
 
@@ -257,6 +258,7 @@ export function buildMenuData(records: TagRecords): MenuDataItem[] {
         // 第二级目录
         const secondLevelChildren: MenuDataItem = {
             title: secondLevelChild.nameEn,
+            id: [],
             children: []
         };
 
@@ -265,6 +267,7 @@ export function buildMenuData(records: TagRecords): MenuDataItem[] {
             secondLevelChild.children.forEach(thirdLevelChild => {
                 const thirdLevelChildren: MenuDataItem = {
                     title: thirdLevelChild.nameEn,
+                    id: JSON.parse(thirdLevelChild.childrenId),
                     children: []
                 };
 
@@ -276,6 +279,7 @@ export function buildMenuData(records: TagRecords): MenuDataItem[] {
                     })) 
                 };
 
+                secondLevelChildren.id.push(...JSON.parse(thirdLevelChild.childrenId));
                 secondLevelChildren.children.push(thirdLevelChildren);
             });
         };
@@ -286,14 +290,36 @@ export function buildMenuData(records: TagRecords): MenuDataItem[] {
     return [
         {
             title: "Model Resources",
+            id: ["a24cba2b-9ce1-44de-ac68-8ec36a535d0e",
+                 "75aee2b7-b39a-4cd0-9223-3b7ce755e457",
+                 "1bf4f381-6bd8-4716-91ab-5a56e51bd2f9",
+                 "8f4d4fca-4d09-49b4-b6f7-5021bc57d0e5",
+                 "d33a1ebe-b2f5-4ed3-9c76-78cfb61c23ee",
+                 "d3ba6e0b-78ec-4fe8-9985-4d5708f28e3e",
+                 "808e74a4-41c6-4558-a850-4daec1f199df",
+                 "40534cf8-039a-4a0a-8db9-7c9bff484190",
+                 "cf9cd106-b873-4a8a-9336-dd72398fc769",
+                 "14130969-fda6-41ea-aa32-0af43104840b",
+                 "e56c1254-70b8-4ff4-b461-b8fa3039944e",
+                 "afa99af9-4224-4fac-a81f-47a7fb663dba",
+                 "f20411a5-2f55-4ee9-9590-c2ec826b8bd5",
+                 "1c876281-a032-4575-8eba-f1a8fb4560d8",
+                 "c6fcc899-8ca4-4269-a21e-a39d38c034a6",
+                 "1d564d0f-51c6-40ca-bd75-3f9489ccf1d6",
+                 "63266a14-d7f9-44cb-8204-c877eaddcaa1",
+                 "6d1efa2c-830d-4546-b759-c66806c4facc",
+                 "6952d5b2-cb0f-4ba7-96fd-5761dd566344"
+                ],
             children: modelResouceChildren
         },
         {
             title: "Method Resources",
+            id: [],
             children: []
         },
         {
             title: "Data Resources",
+            id: [],
             children: []
         }
     ]

@@ -1,23 +1,24 @@
 import { useOutletContext } from "react-router-dom";
-import React, { useState } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { ChevronDown, Search, Loader2, Mail } from "lucide-react";
 import TagRecords, { buildMenuData, type MenuDataItem, type MenuLeafItem } from "../util/record";
 
-const API_URL = "http://localhost:3000/api/resource/findModels"; // 后端接口地址
+const API_URL = "http://localhost:3000/api/resource"; // 后端资源接口地址
 // 定义后端返回的资源类型
 interface ResourceItem {
   name: string;
   description: string;
   type: string;
+  author: string;
+  keywords: string[];
+  createdTime: string;
 }
 
 // 定义后端API期望的filter参数类型
 interface ResourceFilter {
-  categoryId: string; // 资源分类ID
+  categoryId: string[]; // 资源分类ID
   keyword: string; // 搜索关键字
 }
-
-const menuData: MenuDataItem[] = buildMenuData(TagRecords);
 
 // 定义用于跟踪四级菜单状态的类型
 interface MenuItem {
@@ -47,310 +48,9 @@ const isActivePath = (active: MenuItem, level: number, index: number) => {
   return false;
 };
 
-const resourceList = [
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-  {
-    title: "Hydrological Model A",
-    desc: "A basin-scale water flow simulation model supporting precipitation-runoff analysis.",
-    type: "Model",
-  },
-  {
-    title: "Land Surface Dataset",
-    desc: "High-resolution land surface coverage and classification dataset derived from remote sensing.",
-    type: "Data",
-  },
-  {
-    title: "Climate Simulation Tool",
-    desc: "A multi-year climate sequence generator based on regional spatial statistics.",
-    type: "Tool",
-  },
-  {
-    title: "Soil Moisture Product",
-    desc: "Soil moisture inversion based on Sentinel-1 backscatter signals.",
-    type: "Product",
-  },
-  {
-    title: "Multi-source Observation Fusion",
-    desc: "Fusion of ground stations, satellites, and weather radar measurements.",
-    type: "Service",
-  },
-];
-
-const categoryTitles = menuData.map((item) => item.title);
+// 获取目录数据
+const menuData: MenuDataItem[] = buildMenuData(TagRecords); // 构建菜单数据
+const categoryTitles = menuData.map((item) => item.title); // 提取一级分类标题
 
 interface OutletContextType {
   darkMode: boolean;
@@ -367,12 +67,14 @@ export default function Resources() {
   const [totalResources, setTotalResources] = useState(0); // 存储总资源数
   const [loading, setLoading] = useState(false); // 加载状态
 
-  const { darkMode } = useOutletContext<OutletContextType>();
-  const textColor = darkMode ? "text-white" : "text-black";
+  const { darkMode } = useOutletContext<OutletContextType>(); // 模式状态
+  const textColor = darkMode ? "text-white" : "text-black"; // 文字颜色（与模式状态对应）
   const invertedColor = darkMode ? "text-black" : "text-white";
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState(categoryTitles[0]);
-  const [inputValue, setInputValue] = useState("");
+  const [open, setOpen] = useState(false); // 搜索分类下拉框状态
+  const [selected, setSelected] = useState(categoryTitles[0]); // 目录分类选中状态
+  const [inputValue, setInputValue] = useState(""); // 搜索输入框输入值
+
+  // 处理搜索操作，包括分类以及关键字查询
   const onSearch = () => {
     console.log("选择一级分类：", selected);
     let selectedMenuId: string | null = null;
@@ -384,7 +86,9 @@ export default function Resources() {
       active.subSubChild !== null
     ) {
       // 四级菜单
-      const level2 = menuData[active.parent].children[active.child] as MenuDataItem;
+      const level2 = menuData[active.parent].children[
+        active.child
+      ] as MenuDataItem;
       const level3 = level2.children[active.subChild] as MenuDataItem;
       const level4 = level3.children[active.subSubChild] as MenuLeafItem;
       selectedMenuId = level4.id || null;
@@ -394,13 +98,13 @@ export default function Resources() {
     console.log("搜索关键字：", inputValue);
 
     // 调用资源获取函数
-    fetchAndSetResources(selectedMenuId, inputValue);
+    fetchAndSetResources([selectedMenuId || ""], inputValue);
   };
 
   const pageSize = 10;
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = Math.ceil(resourceList.length / pageSize);
-  
+
   // 当前页展示的数据
   const currentData = resourceList.slice(
     (currentPage - 1) * pageSize,
@@ -412,52 +116,93 @@ export default function Resources() {
     const { categoryId, keyword } = filter;
 
     const queryParams = new URLSearchParams();
-    if (categoryId) {
-      queryParams.append("categoryId", categoryId);
+    if (categoryId.length > 0) {
+      queryParams.append("categoryId", categoryId.join(","));
     }
     if (keyword) {
       queryParams.append("keyword", keyword);
     }
+    console.log("fetchResources - queryParams:", queryParams.toString());
 
-    const url = `${API_URL}?${queryParams.toString()}`;
+    const url = `${API_URL}/findModels?${queryParams.toString()}`;
 
     try {
       const response = await fetch(url);
       const result: ResourceItem[] = await response.json();
 
-      return {data: result, total: result.length};
+      return { data: result, total: result.length };
     } catch (error) {
-      return {data: [], total: 0};
+      return { data: [], total: 0 };
     }
   };
 
   // 执行获取模型资源以及设置状态
-  const fetchAndSetResources = async (categoryId: string | null, keyword: string) => {
+  const fetchAndSetResources = async (
+    categoryId: string[] | [],
+    keyword: string
+  ) => {
     setLoading(true);
     setCurrentPage(1); // 重置到第一页
 
-    const categoryIds = categoryId ? categoryId : "";
-    const { data, total } = await fetchResources({ categoryId: categoryIds, keyword: keyword });
+    const { data, total } = await fetchResources({
+      categoryId: categoryId,
+      keyword: keyword,
+    });
 
     setResourceList(data);
     setTotalResources(total);
     setLoading(false);
-  }
+  };
 
   // 处理第四级目录
-  const handleLevlel4Click = (parentIndex: number, childIndex: number, subChildIndex: number, subSubChildIndex: number, node: MenuLeafItem) => {
+  const clickForActiveAndFetchResources = (
+    parentIndex: number | null,
+    childIndex: number | null,
+    subChildIndex: number | null,
+    subSubChildIndex: number | null,
+    node: MenuDataItem | MenuLeafItem
+  ) => {
     setActive({
       parent: parentIndex,
       child: childIndex,
       subChild: subChildIndex,
       subSubChild: subSubChildIndex,
     });
-    // 调用资源获取函数
-    fetchAndSetResources(node.id, inputValue);
+
+    if ("children" in node) {
+      console.log("点击了非叶子节点，fetch全部子节点资源", node);
+      fetchAndSetResources(node.id, inputValue);
+    } else {
+      fetchAndSetResources([node.id], inputValue);
+    }
   };
 
-  const [level2Open, setLevel2Open] = useState<{ [key: string]: boolean }>({}); // 用于控制第二级目录展开/折叠的状态
-  const [level3Open, setLevel3Open] = useState<{ [key: string]: boolean }>({}); // 用于控制第三级目录展开/折叠的状态
+  // 第二级和第三级目录的初始状态
+  const handleInitialToggle = (data: MenuDataItem[]) => {
+    const initialLevel2: { [key: string]: boolean } = {};
+    const initialLevel3: { [key: string]: boolean } = {};
+
+    data.forEach((parent, parentIndex) => {
+      parent.children.forEach((child, childIndex) => {
+        if (typeof child !== "string") {
+          const childKey = `${parentIndex}-${childIndex}`;
+          initialLevel2[childKey] = true; // 默认展开第二级目录
+          const childObj = child as MenuDataItem;
+          childObj.children.forEach((_, subChildIndex) => {
+            const subChildKey = `${parentIndex}-${childIndex}-${subChildIndex}`;
+            initialLevel3[subChildKey] = true; // 默认展开第三级目录
+          });
+        }
+      });
+    });
+
+    return { initialLevel2, initialLevel3 };
+  };
+
+  const {initialLevel2, initialLevel3} = handleInitialToggle(menuData);
+  const [level2Open, setLevel2Open] = useState<{ [key: string]: boolean }>(initialLevel2); // 用于控制第二级目录展开/折叠的状态
+  const [level3Open, setLevel3Open] = useState<{ [key: string]: boolean }>(initialLevel3); // 用于控制第三级目录展开/折叠的状态
+
   // 处理第二级目录展开/折叠
   const handleLevlel2Toggle = (parentIndex: number, childIndex: number) => {
     const key = `${parentIndex}-${childIndex}`;
@@ -465,15 +210,34 @@ export default function Resources() {
       ...prev,
       [key]: !prev[key],
     }));
-  }
+  };
   // 处理第三级目录展开/折叠
-  const handleLevlel3Toggle = (parentIndex: number, childIndex: number, subChildIndex: number) => {
+  const handleLevlel3Toggle = (
+    parentIndex: number,
+    childIndex: number,
+    subChildIndex: number
+  ) => {
     const key = `${parentIndex}-${childIndex}-${subChildIndex}`;
     setLevel3Open((prev) => ({
       ...prev,
       [key]: !prev[key],
     }));
-  }
+  };
+
+  useEffect(() => {
+    const initialData = async () => {
+      return await fetchAndSetResources([], "");
+    };
+
+    initialData();
+
+    setActive({
+      parent: null,
+      child: null,
+      subChild: null,
+      subSubChild: null,
+    });
+  }, []);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -502,12 +266,13 @@ export default function Resources() {
                     : "text-black"
                 } text-left mb-2`}
                 onClick={() =>
-                  setActive({
-                    parent: parentIndex,
-                    child: null,
-                    subChild: null,
-                    subSubChild: null,
-                  })
+                  clickForActiveAndFetchResources(
+                    parentIndex,
+                    null,
+                    null,
+                    null,
+                    menu
+                  )
                 }
               >
                 {menu.title}
@@ -522,7 +287,7 @@ export default function Resources() {
                     active.parent === parentIndex;
 
                   const key = `${parentIndex}-${childIndex}`;
-                  const isL2Open = level2Open[key] ?? true;
+                  const isL2Open = level2Open[key];
 
                   if (typeof secondLevelChildren === "string") {
                     // 如果是字符串类型，直接渲染
@@ -547,9 +312,12 @@ export default function Resources() {
                       </button>
                     );
                   } else {
-                    {/* Third level menu */}
+                    {
+                      /* Third level menu */
+                    }
                     // 如果是对象类型，渲染标题
-                    const secondLevelChildrenObj = secondLevelChildren as MenuDataItem;
+                    const secondLevelChildrenObj =
+                      secondLevelChildren as MenuDataItem;
 
                     return (
                       <div key={childIndex}>
@@ -565,19 +333,21 @@ export default function Resources() {
                             className={`ml-1 cursor-pointer transition-transform duration-200 text-black ${
                               isL2Open ? "rotate-0" : "-rotate-90"
                             }`}
-                            onClick={() =>
-                              handleLevlel2Toggle(parentIndex, childIndex)
-                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLevlel2Toggle(parentIndex, childIndex);
+                            }}
                           />
                           <button
                             className="w-full pl-2 font-sans text-[16px] text-left font-semibold text-black"
                             onClick={() =>
-                              setActive({
-                                parent: parentIndex,
-                                child: childIndex,
-                                subChild: null,
-                                subSubChild: null,
-                              })
+                              clickForActiveAndFetchResources(
+                                parentIndex,
+                                childIndex,
+                                null,
+                                null,
+                                secondLevelChildrenObj
+                              )
                             }
                           >
                             {secondLevelChildren.title}
@@ -594,7 +364,7 @@ export default function Resources() {
                                   active.child === childIndex;
 
                                 const key3 = `${parentIndex}-${childIndex}-${subChildIndex}`;
-                                const isL3Open = level3Open[key3] ?? true;
+                                const isL3Open = level3Open[key3];
 
                                 const thirdLevelChildrenObj =
                                   thirdLevelChildren as MenuDataItem; // 目前thirdLevelChildren均为对象类型
@@ -613,25 +383,27 @@ export default function Resources() {
                                         className={`ml-1 cursor-pointer transition-transform duration-200 text-black ${
                                           isL3Open ? "rotate-0" : "-rotate-90"
                                         }`}
-                                        onClick={() =>
+                                        onClick={(e) => {
+                                          e.stopPropagation();
                                           handleLevlel3Toggle(
                                             parentIndex,
                                             childIndex,
                                             subChildIndex
-                                          )
-                                        }
+                                          );
+                                        }}
                                       />
                                       <button
                                         className={
                                           "w-full pl-4 font-sans text-[15px] text-left text-black"
                                         }
                                         onClick={() =>
-                                          setActive({
-                                            parent: parentIndex,
-                                            child: childIndex,
-                                            subChild: subChildIndex,
-                                            subSubChild: null,
-                                          })
+                                          clickForActiveAndFetchResources(
+                                            parentIndex,
+                                            childIndex,
+                                            subChildIndex,
+                                            null,
+                                            thirdLevelChildrenObj
+                                          )
                                         }
                                       >
                                         {thirdLevelChildrenObj.title}
@@ -667,7 +439,7 @@ export default function Resources() {
                                                     : "text-black"
                                                 }`}
                                                 onClick={() =>
-                                                  handleLevlel4Click(
+                                                  clickForActiveAndFetchResources(
                                                     parentIndex,
                                                     childIndex,
                                                     subChildIndex,
@@ -759,131 +531,197 @@ export default function Resources() {
           </div>
 
           {/* Resources Area(Card list) */}
-          <div className="py-6 min-h-[300px]">
-            {/* 卡片网格布局 */}
-            <div className="flex flex-col sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {currentData.map((item, index) => (
-                <div
-                  key={index}
-                  className="p-4 bg-white border rounded-xl shadow-sm hover:shadow-xl transition-shadow duration-200 cursor-pointer"
-                >
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">
-                    {item.name}
-                  </h3>
-                  <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">
-                    {item.description}
-                  </p>
+          <div className="py-6 min-h-[300px] relative">
+            {/* 正常卡片内容以及没有数据时的提醒 */}
+            {currentData.length === 0 && loading === false ? (
+              <div className={"text-center py-10 text-xl text-white italic"}>
+                No resources found matching your criteria.
+              </div>
+            ) : (
+              <div className="flex flex-col sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {/* 卡片网格布局 */}
+                {currentData.map((item, index) => (
+                  <div
+                    key={index}
+                    className="p-4 bg-white border rounded-xl shadow-sm hover:shadow-xl transition-shadow duration-200 cursor-pointer flex flex-col justify-between"
+                  >
+                    {/* 顶部内容区域 */}
+                    <div>
+                      <h3 className="text-lg font-semibold text-black mb-2 line-clamp-1">
+                        {item.name}
+                      </h3>
+                      <p className="text-sm text-gray-700 leading-relaxed line-clamp-2 mb-3 h-[50px]">
+                        {item.description}
+                      </p>
+                    </div>
 
-                  <div className="mt-3 flex justify-between items-center">
-                    <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-md">
-                      {" "}
-                      {item.type}{" "}
-                    </span>
-                    <button className="text-blue-600 hover:underline text-sm">
-                      View →
-                    </button>
+                    {/* 底部标签和操作按钮区域 */}
+                    <div className="my-1 flex justify-between items-center">
+                      {/* 关键词标签区域 */}
+                      <div className="flex flex-wrap gap-1 max-w-[70%]">
+                        {item.keywords.slice(0, 5).map((keyword, kIndex) => (
+                          <span
+                            key={kIndex}
+                            className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-md"
+                          >
+                            {keyword}
+                          </span>
+                        ))}
+                        {item.keywords.length > 5 && (
+                          <span className="text-xs px-2 py-1 text-blue-700">
+                            + {item.keywords.length - 5} more
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 操作按钮
+                      <button className="text-blue-600 hover:underline text-sm flex-shrink-0">
+                        View →
+                      </button> */}
+                    </div>
+
+                    {/* 作者邮箱和创建时间 */}
+                    <div className="mt-2 flex justify-between">
+                      <div className="flex items-center gap-1 text-[13px]">
+                        <Mail size={18} className="text-orange-500" />
+                        <p className="font-medium text-gray-600">
+                          {item.author}
+                        </p>
+                      </div>
+                      <p className="text-[13px] text-gray-800 font-semibold">
+                        CreatedTime:{" "}
+                        <span className="font-medium text-gray-600">
+                          {item.createdTime}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 加载中的状态，加载蒙蔽和指示器 */}
+            {loading ? (
+              currentData.length > 0 ? (
+                <div className="absolute inset-0 bg-white/50 backdrop-blur-xs flex items-start justify-center rounded-lg z-10 my-6">
+                  <div className="flex items-center gap-3 mt-40">
+                    <Loader2 size={48} className="animate-spin text-blue-500" />
+                    <div className="text-xl text-blue-500">
+                      Loading Resources...
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
+              ) : (
+                <div className="flex items-center justify-center gap-3 mt-40">
+                  <Loader2 size={48} className="animate-spin text-blue-500" />
+                  <div className="text-xl text-blue-500">
+                    Loading Resources...
+                  </div>
+                </div>
+              )
+            ) : null}
           </div>
 
           {/* Pagination Area */}
-          <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-            <div>
-              <p className={`hidden sm:block text-sm ${textColor}`}>
-                Showing{" "}
-                <span className="font-medium">
-                  {(currentPage - 1) * pageSize + 1}
-                </span>{" "}
-                to{" "}
-                <span className="font-medium">
-                  {currentPage === totalPages
-                    ? resourceList.length
-                    : currentPage * pageSize}
-                </span>{" "}
-                of <span>{resourceList.length}</span> results
-              </p>
-            </div>
+          {loading === false && currentData.length > 0 && (
+            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+              <div>
+                <p className={`hidden sm:block text-sm ${textColor}`}>
+                  Showing{" "}
+                  <span className="font-medium">
+                    {(currentPage - 1) * pageSize + 1}
+                  </span>{" "}
+                  to{" "}
+                  <span className="font-medium">
+                    {currentPage === totalPages
+                      ? resourceList.length
+                      : currentPage * pageSize}
+                  </span>{" "}
+                  of <span>{resourceList.length}</span> results
+                </p>
+              </div>
 
-            <nav
-              aria-label="Pagination"
-              className="isolate inline-flex -space-x-px rounded-md"
-            >
-              <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className={`relative inline-flex items-center rounded-l-md px-2 py-2 ${textColor} border border-gray-700 focus:z-20 focus:outline-offset-0 transition ${
-                  currentPage === 1 ? "cursor-not-allowed" : "hover:bg-gray-200"
-                }`}
+              <nav
+                aria-label="Pagination"
+                className="isolate inline-flex -space-x-px rounded-md"
               >
-                Previous
-              </button>
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className={`relative inline-flex items-center rounded-l-md px-2 py-2 ${textColor} border border-gray-700 focus:z-20 focus:outline-offset-0 transition ${
+                    currentPage === 1
+                      ? "cursor-not-allowed"
+                      : "hover:bg-gray-200"
+                  }`}
+                >
+                  Previous
+                </button>
 
-              {/* Page Numbers */}
-              <div className="hidden sm:flex">
-                {(() => {
-                  const pages: number[] = [];
+                {/* Page Numbers */}
+                <div className="hidden sm:flex">
+                  {(() => {
+                    const pages: number[] = [];
 
-                  // Ensure key pages are displayed: first page, current page, last page, etc
-                  const add = (p: number) =>
-                    !pages.includes(p) &&
-                    p >= 1 &&
-                    p <= totalPages &&
-                    pages.push(p);
+                    // Ensure key pages are displayed: first page, current page, last page, etc
+                    const add = (p: number) =>
+                      !pages.includes(p) &&
+                      p >= 1 &&
+                      p <= totalPages &&
+                      pages.push(p);
 
-                  add(1);
-                  add(currentPage - 1);
-                  add(currentPage);
-                  add(currentPage + 1);
-                  add(totalPages);
+                    add(1);
+                    add(currentPage - 1);
+                    add(currentPage);
+                    add(currentPage + 1);
+                    add(totalPages);
 
-                  pages.sort((a, b) => a - b);
+                    pages.sort((a, b) => a - b);
 
-                  return pages.map((p, i) => {
-                    const isGap = pages[i + 1] && pages[i + 1] - p > 1;
+                    return pages.map((p, i) => {
+                      const isGap = pages[i + 1] && pages[i + 1] - p > 1;
 
-                    return (
-                      <React.Fragment key={p}>
-                        <button
-                          onClick={() => setCurrentPage(p)}
-                          className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold transition ${textColor}
+                      return (
+                        <React.Fragment key={p}>
+                          <button
+                            onClick={() => setCurrentPage(p)}
+                            className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold transition ${textColor}
                             ${
                               currentPage === p
                                 ? "bg-blue-600 border-blue-600"
                                 : "hover:bg-gray-200/40 border border-gray-700"
                             }`}
-                        >
-                          {p}
-                        </button>
-                        {isGap && (
-                          <span
-                            className={`inline-flex items-center px-4 py-2 text-sm font-semibold border border-gray-700 ${textColor}`}
                           >
-                            ...
-                          </span>
-                        )}
-                      </React.Fragment>
-                    );
-                  });
-                })()}
-              </div>
+                            {p}
+                          </button>
+                          {isGap && (
+                            <span
+                              className={`inline-flex items-center px-4 py-2 text-sm font-semibold border border-gray-700 ${textColor}`}
+                            >
+                              ...
+                            </span>
+                          )}
+                        </React.Fragment>
+                      );
+                    });
+                  })()}
+                </div>
 
-              <button
-                disabled={currentPage === totalPages}
-                onClick={() =>
-                  setCurrentPage((p) => Math.min(totalPages, p + 1))
-                }
-                className={`relative inline-flex items-center rounded-r-md px-2 py-2 ${textColor} border border-gray-700 ${
-                  currentPage === totalPages
-                    ? "cursor-not-allowed"
-                    : "hover:bg-gray-200/40"
-                }`}
-              >
-                Next
-              </button>
-            </nav>
-          </div>
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  className={`relative inline-flex items-center rounded-r-md px-2 py-2 ${textColor} border border-gray-700 ${
+                    currentPage === totalPages
+                      ? "cursor-not-allowed"
+                      : "hover:bg-gray-200/40"
+                  }`}
+                >
+                  Next
+                </button>
+              </nav>
+            </div>
+          )}
         </main>
       </div>
     </div>
