@@ -3,7 +3,9 @@ import React, { useState, useEffect } from "react";
 import { ChevronDown, Search, Loader2, Mail } from "lucide-react";
 import TagRecords, { buildMenuData, type MenuDataItem, type MenuLeafItem } from "../util/record";
 
-const API_URL = "http://localhost:3000/api/resource"; // 后端资源接口地址
+// 后端API基础URL
+const BACK_URL = import.meta.env.VITE_BACK_URL;
+
 // 定义后端返回的资源类型
 interface ResourceItem {
   name: string;
@@ -124,7 +126,7 @@ export default function Resources() {
     }
     console.log("fetchResources - queryParams:", queryParams.toString());
 
-    const url = `${API_URL}/findModels?${queryParams.toString()}`;
+    const url = `${BACK_URL}/resource/findModels?${queryParams.toString()}`;
 
     try {
       const response = await fetch(url);

@@ -4,10 +4,35 @@ import { SquarePen, Search, Sparkles, Activity } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ModelExecuteProcess from "../components/ModelExecuteProcess"
 
+// 后端API基础URL
+const BACK_URL = import.meta.env.VITE_BACK_URL;
+
 interface InputField {
   name: string;
   key: string;
   type: "file" | "text" | "number";
+}
+
+// 定义模型event的输入数据
+interface WorkflowInput {
+  name: string;
+  key: string;
+  type: string;
+  description: string;
+}
+
+// 定义模型event
+interface WorkflowEvent {
+  eventName: string;
+  eventDescription: string;
+  inputs: WorkflowInput[];
+}
+
+// 定义模型state
+interface WorkflowState {
+  stateName: string;
+  stateDescription: string;
+  events: WorkflowEvent[];
 }
 
 // Reducer Action Types
@@ -29,11 +54,14 @@ export default function IntelligentDecision() {
   const [messages, setMessages] = useState<string[]>([]);
 
   // Pop up input slot after model recommendation
-  const [recommendedModel, setReconmmendedModel] = useState<string | null>(null);
-  const [requiredInputs, setRequiredInputs] = useState<InputField[]>([]);
+  const [reconmmendedModelName, setReconmmendedModelName] = useState<string | null>(null);
+  const [reconmmendedModelDesc, setReconmmendedModelDesc] = useState<string | null>(null);
+  const [workflow, setWorkflow] = useState<WorkflowState[]>([]);
 
   // Store user uploaded files
-  const [uploadedData, setUploadedData] = useState<Record<string, File | string | number | null>>({});
+  const [uploadedData, setUploadedData] = useState<
+    Record<string, File | string | number | null>
+  >({});
 
   // Show running state
   // const [runStatus, setRunStatus] = useState<String[]>([]);
@@ -42,21 +70,57 @@ export default function IntelligentDecision() {
 
   // Simulate LLM to recommend model
   const simulateLLMRecommend = () => {
-    setReconmmendedModel("城市扩张预测模拟模型");
-    setRequiredInputs([
-      { name: "土地利用栅格", key: "landuse_raster", type: "file" },
-      { name: "人口密度数据", key: "population_density", type: "file" },
-      { name: "交通路网类型", key: "road_type", type: "text" },
-      { name: "预测年份", key: "predict_year", type: "number" },
+    setReconmmendedModelName("城市扩张预测模拟模型");
+    setReconmmendedModelDesc("基于MABR的城市扩张预测模拟模型，适用于中小型城市的土地利用变化预测。");
+    setWorkflow([
+      {
+        stateName: "preparation_DLPS",
+        stateDescription: "基于地块的凸包的MABR对地块进行分割。",
+        events: [
+          {
+            eventName: "土地利用栅格",
+            eventDescription: "准备输入数据，包括地理数据和属性数据。",
+            inputs: [
+              { name: "土地利用栅格", key: "landuse_raster", type: "file", description: "上传土地利用类型的栅格数据文件" }
+            ]
+          },
+          {
+            eventName: "人口密度数据",
+            eventDescription: "准备输入数据，包括地理数据和属性数据。",
+            inputs: [
+              { name: "人口密度数据", key: "population_density", type: "file", description: "上传人口密度数据文件" }
+            ]
+          },
+          {
+            eventName: "交通路网类型",
+            eventDescription: "准备输入数据，包括地理数据和属性数据。",
+            inputs: [
+              { name: "交通路网类型", key: "road_type", type: "text", description: "输入交通路网类型" }
+            ]
+          },
+          {
+            eventName: "预测年份",
+            eventDescription: "准备输入数据，包括地理数据和属性数据。",
+            inputs: [
+              { name: "预测年份", key: "predict_year", type: "number", description: "输入预测年份" },
+            ]
+          },
+        ]
+      }
     ]);
-  }
+  };
 
   // User clik running button
   const handleRun = () => {
     setIsRunning(true);
-    dispatch({ type: 'RESET' });
+    dispatch({ type: "RESET" });
 
-    const steps = ["Check data format", "Data preprocessing", "Model core computing", "Output result generation in progress"];
+    const steps = [
+      "Check data format",
+      "Data preprocessing",
+      "Model core computing",
+      "Output result generation in progress",
+    ];
     let i = 0;
 
     const executeStep = () => {
@@ -65,29 +129,73 @@ export default function IntelligentDecision() {
         console.log("steps[i]:", steps[i]);
 
         // 使用dispatch进行同步更新
-        dispatch({ type: 'ADD_STEP', payload: steps[i] });
+        dispatch({ type: "ADD_STEP", payload: steps[i] });
 
         i++;
         setTimeout(executeStep, 1000);
       } else {
-        dispatch({ type: 'ADD_STEP', payload: "Model execution finished!" });
+        dispatch({ type: "ADD_STEP", payload: "Model execution finished!" });
       }
-    }
+    };
     // 强制立即启动
     executeStep();
-  }
+  };
+
+  // 向后端发送消息并获取推荐的方法
+  const handleSendMessage = async (prompt: string) => {
+    setMessages((prev) => [...prev, prompt]);
+    try {
+      const response = await fetch(`${BACK_URL}/llm-agent/recommendModel`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setReconmmendedModelName(data.data.name);
+        setReconmmendedModelDesc(data.data.description);
+        setWorkflow(data.data.workflow);
+      }
+    } catch (error) {
+      console.error("Error fetching recommended model:", error);
+    }
+  };
+
+  // 用于检查所有输入数据是否已经填写完整
+  const isAllInputsFilled = () => {
+    const allKeys: string[] = [];
+    workflow.forEach((state) => {
+      state.events.forEach((event) => {
+        event.inputs.forEach((input) => {
+          allKeys.push(input.key);
+        });
+      });
+    });
+
+    return (
+      allKeys.length > 0 &&
+      allKeys.every(
+        (key) => uploadedData[key] !== undefined && uploadedData[key] !== null
+      )
+    );
+  };
 
   return (
     <div className="flex flex-1 h-[calc(100vh-64px)] overflow-hidden bg-white">
-
       {/* ------------------------------- Left Sidebar ------------------------------- */}
       <aside className="w-72 bg-gray-900 text-white flex flex-col p-3">
         <div className="mb-5 space-y-2">
-          <button className="w-full py-2 px-2 rounded-lg flex items-center gap-2 hover:bg-gray-700 transition"
+          <button
+            className="w-full py-2 px-2 rounded-lg flex items-center gap-2 hover:bg-gray-700 transition"
             onClick={() => {
               const newId = Date.now();
               setActiveChatId(newId);
-            }}>
+            }}
+          >
             <SquarePen size={20} />
             <span>New Chat</span>
           </button>
@@ -98,45 +206,54 @@ export default function IntelligentDecision() {
           </button>
         </div>
 
-        <h3 className="font-bold text-gray-200 mb-2 px-2">Historical Records</h3>
+        <h3 className="font-bold text-gray-200 mb-2 px-2">
+          Historical Records
+        </h3>
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-
-          {[1, 2, 3].map(i => {
+          {[1, 2, 3].map((i) => {
             const isActive = i === activaChatId;
 
             return (
               <button
                 key={i}
-                className={`w-full text-left p-2 rounded-lg transition ${isActive ? 'bg-gray-100/50 text-white' : 'hover:bg-gray-700 text-white'}`}>
+                className={`w-full text-left p-2 rounded-lg transition ${
+                  isActive
+                    ? "bg-gray-100/50 text-white"
+                    : "hover:bg-gray-700 text-white"
+                }`}
+              >
                 Chat record {i}
               </button>
             );
           })}
-
         </div>
 
         <button
           onClick={simulateLLMRecommend}
-          className="mt-6 bg-green-600 p-2 rounded hover:bg-green-700">
+          className="mt-6 bg-green-600 p-2 rounded hover:bg-green-700"
+        >
           ⚡ 模拟LLM推荐模型
         </button>
       </aside>
 
       {/* ------------------------------- Middle Chat Panel ------------------------------- */}
       <main className="flex flex-1 flex-col">
-
         <div className="flex-1 p-6 overflow-y-auto bg-white min-h-0">
           {messages.length === 0 ? (
             <div className="flex flex-col justify-center items-center h-full">
               <p className="text-gray-400 text-center">
                 👋 Enter your instructions to start the decision process
-                <br />(example: help me predict land use change)
+                <br />
+                (example: help me predict land use change)
               </p>
             </div>
           ) : (
             <div className="flex flex-col items-end">
               {messages.map((msg, i) => (
-                <div key={i} className="my-3 p-3 max-w-xl rounded-lg bg-gray-100 text-black">
+                <div
+                  key={i}
+                  className="my-3 p-3 max-w-xl rounded-lg bg-gray-100 text-black"
+                >
                   {msg}
                 </div>
               ))}
@@ -144,121 +261,154 @@ export default function IntelligentDecision() {
           )}
         </div>
 
-        <ChatInput onSend={(msg) => {
-          setMessages(prev => [...prev, msg]);
-        }}
+        <ChatInput
+          onSend={(msg) => handleSendMessage(msg)}
         />
       </main>
 
       {/* ------------------------------- Right InputSlots + Result Panel ------------------------------- */}
-      {/* Now, LLM don't recommend any model —— recommendedModel: false; isRunning: false */}
+      {/* Now, LLM don't recommend any model —— reconmmendedModelName: false; isRunning: false */}
       <AnimatePresence>
-        {recommendedModel && (
+        {reconmmendedModelName && (
           <motion.section
             initial={{ opacity: 0, x: 80 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 80 }}
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className="w-[32%] flex flex-col">
+            className="w-[32%] flex flex-col"
+          >
             <div className="flex-1 bg-gray-100/50 rounded-lg m-5 p-4 shadow">
               {/* Now, LLM has recommend the most suitable model, and user needs to upload data */}
-              {recommendedModel && !isRunning && (
-                <div className="space-y-3">
-                  <div className="w-full flex items-center space-x-2">
-                    <Sparkles size={20}  className="text-blue-600"/>
-                    <h3 className="text-xl text-black font-bold">Recommended Model</h3>
+              {reconmmendedModelName && !isRunning && (
+                <div>
+                  <div className="mb-4">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <Sparkles size={20} className="text-blue-800" />
+                      <h3 className="text-2xl text-blue-800 font-bold">Model recommendation</h3>
+                    </div>
+                    <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-blue-800 via-blue-500 to-transparent"></div>
+
+                    <p className="text-xl text-blue-600 font-extrabold">{reconmmendedModelName}</p>
+                    <p className="text-[13px] text-gray-600 mt-1">{reconmmendedModelDesc}</p>
                   </div>
-                  <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-gray-900 via-gray-500 to-transparent"></div>
 
-                  <p className="text-lg text-black font-semibold">{recommendedModel}</p>
-                  <p className="text-sm italic text-gray-600">Please upload the data required by the model</p>
-
-                  <div className="space-y-3 flex-1 overflow-y-auto">
-                    {requiredInputs.map(item => {
-                      const value = uploadedData[item.key];
-
-                      return (
-                        <div key={item.key} className="p-3 bg-white rounded-lg shadow border flex items-center gap-3 text-black h-13">
-
-                          {/* 字段名 */}
-                          <span className="font-medium w-45">{item.name}</span>
-
-                          {/* --- 文件类型 --- */}
-                          {item.type === "file" && (
-                            <>
-                              <label className="cursor-pointer flex justify-center items-center h-8 px-2 bg-blue-400 hover:bg-blue-600 text-white rounded-lg text-sm ">
-                                上传文件
-                                <input
-                                  type="file"
-                                  className="hidden"
-                                  onChange={e =>
-                                    setUploadedData(p => ({
-                                      ...p,
-                                      [item.key]: e.target.files?.[0] ?? null
-                                    }))
-                                  }
-                                />
-                              </label>
-
-                              {value instanceof File ? (
-                                <span className="text-green-700 text-sm truncate max-w-[120px]">
-                                  {value.name}
-                                </span>
-                              ) : (
-                                <span className="text-gray-400 text-sm">未选择文件</span>
-                              )}
-                            </>
-                          )}
-
-                          {/* --- 文本类型 --- */}
-                          {item.type === "text" && (
-                            <input
-                              type="text"
-                              className="flex-1 border rounded px-2 py-1"
-                              onChange={e => setUploadedData(p => ({ ...p, [item.key]: e.target.value }))}
-                              placeholder="请输入文本..."
-                            />
-                          )}
-
-                          {/* --- 数字类型 --- */}
-                          {item.type === "number" && (
-                            <input
-                              type="number"
-                              className="flex-1 border rounded px-2 py-1"
-                              onChange={e => setUploadedData(p => ({ ...p, [item.key]: Number(e.target.value) }))}
-                              placeholder="请输入数字..."
-                            />
+                  <div className="flex-1 overflow-y-auto space-y-6 mb-5">
+                    {workflow.map((state, sIdx) => (
+                      <div
+                        key={sIdx}
+                        className="relative ml-2 pl-6 pb-2 border-l-2 border-blue-200"
+                      >
+                        {/* state层 */}
+                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-blue-500 border-2 border-white" />
+                        <div className="mb-3">
+                          <h4 className="text-lg font-bold text-black">{state.stateName}</h4>
+                          {state.stateDescription && (
+                            <p className="text-[13px] text-gray-500">{state.stateDescription}</p>
                           )}
                         </div>
-                      )
-                    })}
+
+                        {/* event层 */}
+                        <div className="space-y-3">
+                          {state.events.map((event, eIdx) => (
+                            <div
+                              key={eIdx}
+                              className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm"
+                            >
+                              <div className="mb-2 flex items-center gap-2">
+                                <div className="w-1 h-3 bg-blue-400 rounded-full" />
+                                <h5 className="text-md font-semibold text-gray-800">{event.eventName}</h5>
+                              </div>
+                              {event.eventDescription && (
+                                  <p className="mb-2 text-[13px] text-gray-500">{event.eventDescription}</p>
+                                )}
+
+                              {/* input层 */}
+                              <div className="space-y-3">
+                                {event.inputs.map((input) => {
+                                  const value = uploadedData[input.key];
+                                  const isFile = input.type.toUpperCase() === "FILE";
+
+                                  return (
+                                    <div
+                                      key={input.key}
+                                      className="flex flex-col gap-1"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        {isFile ? (
+                                          <div className="flex items-center gap-2 w-full">
+                                            <label className="shrink-0 cursor-pointer flex justify-center items-center h-8 px-3 bg-gray-100 hover:bg-blue-50 text-blue-600 border border-dashed border-blue-300 rounded-md text-[13px] transition-all">
+                                              {value ? "Reupload" : "Select File"}
+                                              <input
+                                                type="file"
+                                                className="hidden"
+                                                onChange={(e) =>
+                                                  setUploadedData((p) => ({
+                                                    ...p,
+                                                    [input.key]:
+                                                      e.target.files?.[0] ||
+                                                      null,
+                                                  }))
+                                                }
+                                              />
+                                            </label>
+                                            <span className="text-[12px] truncate text-gray-400">
+                                              {value instanceof File
+                                                ? value.name
+                                                : "No data detected !"}
+                                            </span>
+                                          </div>
+                                        ) : (
+                                          <input
+                                            className="w-full text-[13px] border-b border-gray-200 focus:border-blue-500 outline-none py-1 transition-colors text-black"
+                                            placeholder={"Please enter parameters ..."}
+                                            onChange={(e) =>
+                                              setUploadedData((p) => ({
+                                                ...p,
+                                                [input.key]: e.target.value,
+                                              }))
+                                            }
+                                          />
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
-                  <button disabled={Object.keys(uploadedData).length < requiredInputs.length}
+                  <button
+                    disabled={!isAllInputsFilled()}
                     onClick={handleRun}
-                    className="w-full p-2 bg-green-600 text-white rounded disabled:bg-gray-400">
+                    className="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+                  >
                     Running
                   </button>
                 </div>
               )}
 
               {/* Now, LLM has recommend the most suitable model, and user has uploaded data */}
-              {recommendedModel && isRunning && (
+              {reconmmendedModelName && isRunning && (
                 <div className="space-y-3">
                   <div className="w-full flex items-center space-x-2">
-                    <Activity size={20} className="text-blue-600"/>
-                    <h3 className="text-xl text-black font-bold">Model execution process</h3>
+                    <Activity size={20} className="text-blue-800" />
+                    <h3 className="text-2xl text-blue-800 font-bold">
+                      Model execution process
+                    </h3>
                   </div>
                   <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-gray-900 via-gray-500 to-transparent"></div>
 
-                  <div className="flex-1 overflow-y-auto pr-2"> 
+                  <div className="flex-1 overflow-y-auto pr-2">
                     <ModelExecuteProcess status={runStatus} />
-                </div>
+                  </div>
                 </div>
               )}
             </div>
           </motion.section>
-
         )}
       </AnimatePresence>
     </div>
