@@ -51,7 +51,7 @@ function runStatusReducer(state: String[], action: Action): String[] {
 
 export default function IntelligentDecision() {
   const [activaChatId, setActiveChatId] = useState<number | null>(1);
-  const [messages, setMessages] = useState<string[]>([]);
+  const [messages, setMessages] = useState<{ role: "user" | "AI"; content :string }[]>([]);
 
   // Pop up input slot after model recommendation
   const [reconmmendedModelName, setReconmmendedModelName] = useState<string | null>(null);
@@ -143,7 +143,7 @@ export default function IntelligentDecision() {
 
   // 向后端发送消息并获取推荐的方法
   const handleSendMessage = async (prompt: string) => {
-    setMessages((prev) => [...prev, prompt]);
+    setMessages((prev) => [...prev, { role: "user", content: prompt }]);
     try {
       const response = await fetch(`${BACK_URL}/llm-agent/recommendModel`, {
         method: "POST",
@@ -159,9 +159,21 @@ export default function IntelligentDecision() {
         setReconmmendedModelName(data.data.name);
         setReconmmendedModelDesc(data.data.description);
         setWorkflow(data.data.workflow);
+
+        // 添加推荐原因
+        if(data.data.reason) {
+          setMessages((prev) => [
+            ...prev,
+            {role: "AI", content: `${data.data.reason}`}
+          ]);
+        }
       }
     } catch (error) {
       console.error("Error fetching recommended model:", error);
+      setMessages((prev) => [
+        ...prev,
+        {role: "AI", content: "No suitable geographic model found for your request."}
+      ]);
     }
   };
 
@@ -248,13 +260,21 @@ export default function IntelligentDecision() {
               </p>
             </div>
           ) : (
-            <div className="flex flex-col items-end">
+            <div className="flex flex-col w-full gap-y-5">
               {messages.map((msg, i) => (
                 <div
                   key={i}
-                  className="my-3 p-3 max-w-xl rounded-lg bg-gray-100 text-black"
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  {msg}
+                  <div className={`p-3 max-w-xl rounded-lg shadow-sm ${
+                    msg.role === "user" 
+                    ? "bg-gray-100/50 text-black rounded-tr-none"
+                    : "bg-blue-100/50 text-black rounded-tl-none"
+                  }`}>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                      {msg.content}
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -277,7 +297,7 @@ export default function IntelligentDecision() {
             transition={{ duration: 0.45, ease: "easeOut" }}
             className="w-[32%] flex flex-col"
           >
-            <div className="flex-1 bg-gray-100/50 rounded-lg m-5 p-4 shadow">
+            <div className="flex-1 bg-gray-100/50 rounded-lg my-5 mr-5 p-4 shadow">
               {/* Now, LLM has recommend the most suitable model, and user needs to upload data */}
               {reconmmendedModelName && !isRunning && (
                 <div>
@@ -296,7 +316,7 @@ export default function IntelligentDecision() {
                     {workflow.map((state, sIdx) => (
                       <div
                         key={sIdx}
-                        className="relative ml-2 pl-6 pb-2 border-l-2 border-blue-200"
+                        className="relative ml-2 pl-4 pb-2 border-l-2 border-blue-200"
                       >
                         {/* state层 */}
                         <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-blue-500 border-2 border-white" />
@@ -360,7 +380,7 @@ export default function IntelligentDecision() {
                                         ) : (
                                           <input
                                             className="w-full text-[13px] border-b border-gray-200 focus:border-blue-500 outline-none py-1 transition-colors text-black"
-                                            placeholder={"Please enter parameters ..."}
+                                            placeholder={`${input.description}`}
                                             onChange={(e) =>
                                               setUploadedData((p) => ({
                                                 ...p,
