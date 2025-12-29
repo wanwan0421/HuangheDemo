@@ -3,6 +3,7 @@ import ChatInput from "../components/ChatInput";
 import { SquarePen, Search, Sparkles, Activity } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ModelExecuteProcess from "../components/ModelExecuteProcess"
+import ToolTimeline from "../components/ToolTimeline";
 
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
@@ -33,6 +34,14 @@ interface WorkflowState {
   stateName: string;
   stateDescription: string;
   events: WorkflowEvent[];
+}
+
+// 定义AI返回工具事件类型
+interface ToolEvent {
+  type: "running" | "success" | "error";
+  title: string;
+  kind?: "search_index" | "search_model" | "model_details";
+  result?: any;
 }
 
 // Reducer Action Types
@@ -67,6 +76,8 @@ export default function IntelligentDecision() {
   // const [runStatus, setRunStatus] = useState<String[]>([]);
   const [runStatus, dispatch] = React.useReducer(runStatusReducer, []);
   const [isRunning, setIsRunning] = useState(false);
+
+  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
 
   // Simulate LLM to recommend model
   const simulateLLMRecommend = () => {
@@ -141,40 +152,128 @@ export default function IntelligentDecision() {
     executeStep();
   };
 
-  // 向后端发送消息并获取推荐的方法
-  const handleSendMessage = async (prompt: string) => {
+  const handleSendMessage = (prompt: string) => {
+    // 1️⃣ 显示用户输入
     setMessages((prev) => [...prev, { role: "user", content: prompt }]);
-    try {
-      const response = await fetch(`${BACK_URL}/llm-agent/recommendModel`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ prompt }),
-      });
 
-      const data = await response.json();
+    // 2️⃣ 重置状态
+    setReconmmendedModelName(null);
+    setReconmmendedModelDesc(null);
+    setWorkflow([]);
+    dispatch({ type: "RESET" });
+    setIsRunning(false);
 
-      if (data.success) {
-        setReconmmendedModelName(data.data.name);
-        setReconmmendedModelDesc(data.data.description);
-        setWorkflow(data.data.workflow);
+    // 3️⃣ 建立 SSE 连接（Node → Python → Agent）
+    const es = new EventSource(
+      `${BACK_URL}/llm-agent/chat?query=${encodeURIComponent(prompt)}`
+    );
 
-        // 添加推荐原因
-        if(data.data.reason) {
-          setMessages((prev) => [
+    es.onmessage = (event) => {
+      const payload = JSON.parse(event.data);
+
+      switch (payload.type) {
+        /** Agent状态 */
+        case "status":
+          dispatch({ type: "ADD_STEP", payload: payload.message });
+          break;
+
+        /** 工具调用 */
+        case "tool":
+          setToolEvents((prev) => [
             ...prev,
-            {role: "AI", content: `${data.data.reason}`}
+            { type: "running", title: payload.message },
           ]);
-        }
+          dispatch({ type: "ADD_STEP", payload: payload.message });
+          break;
+
+        /** 工具调用完成/返回结果 */
+        case "search_index":
+          setToolEvents((prev) => {
+            if (prev.length === 0) {
+              return [{
+                type: "success",
+                kind: "search_index",
+                title: "指标库检索完成",
+                result: payload.data,
+              }];
+            };
+
+            const newEvents = [...prev];
+            newEvents[newEvents.length - 1] = {
+              type: "success",
+              kind: "search_index",
+              title: "指标库检索完成",
+              result: payload.data,
+            };
+            return newEvents;
+          });
+          break;
+
+        case "search_model":
+          setToolEvents((prev) => {
+            const newEvents = [...prev];
+            newEvents[newEvents.length - 1] = {
+              type: "success",
+              kind: "search_model",
+              title: "模型库检索完成",
+              result: payload.data,
+            };
+            return newEvents;
+          });
+          break;
+
+        case "error":
+          setToolEvents((prev) => {
+            const newEvents = [...prev];
+            newEvents[newEvents.length - 1] = {
+              ...newEvents[newEvents.length - 1],
+              type: "error",
+              title: payload.message || "工具执行失败",
+            };
+            return newEvents;
+          });
+          break;
+
+        /** LLM token 流 */
+        case "token":
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "AI") {
+              // 拼接 token
+              return [
+                ...prev.slice(0, -1),
+                { role: "AI", content: last.content + payload.message },
+              ];
+            }
+            return [...prev, { role: "AI", content: payload.message }];
+          });
+          break;
+
+        /** 最终模型推荐（JSON） */
+        case "model_details":
+          setToolEvents((prev) => {
+            const newEvents = [...prev];
+            newEvents[newEvents.length - 1] = {
+              type: "success",
+              kind: "model_details",
+              title: "模型推荐完成",
+              result: [],
+            };
+            return newEvents;
+          });
+
+          setReconmmendedModelName(payload.data.name);
+          setReconmmendedModelDesc(payload.data.description);
+          setWorkflow(payload.data.workflow);
+          setIsRunning(false);
+          es.close();
+          break;
       }
-    } catch (error) {
-      console.error("Error fetching recommended model:", error);
-      setMessages((prev) => [
-        ...prev,
-        {role: "AI", content: "No suitable geographic model found for your request."}
-      ]);
-    }
+    };
+
+    es.onerror = () => {
+      es.close();
+    };
   };
 
   // 用于检查所有输入数据是否已经填写完整
@@ -261,29 +360,40 @@ export default function IntelligentDecision() {
             </div>
           ) : (
             <div className="flex flex-col w-full gap-y-5">
+              {/* 用户消息 + LLM回答 */}
               {messages.map((msg, i) => (
                 <div
-                  key={i}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  key={`msg-${i}`}
+                  className={`flex ${
+                    msg.role === "user" ? "justify-end" : "justify-start"
+                  }`}
                 >
-                  <div className={`p-3 max-w-xl rounded-lg shadow-sm ${
-                    msg.role === "user" 
-                    ? "bg-gray-100/50 text-black rounded-tr-none"
-                    : "bg-blue-100/50 text-black rounded-tl-none"
-                  }`}>
+                  <div
+                    className={`p-3 max-w-lg rounded-lg shadow-sm ${
+                      msg.role === "user"
+                        ? "bg-gray-100/50 text-black rounded-tr-none"
+                        : "bg-blue-100/50 text-black rounded-tl-none"
+                    }`}
+                  >
                     <p className="text-sm leading-relaxed whitespace-pre-wrap">
                       {msg.content}
                     </p>
                   </div>
                 </div>
               ))}
+
+              {/* 工具事件 Timeline */}
+              {toolEvents.length > 0 && (
+                <div className="space-y-2 mt-4">
+                  <h4 className="text-sm text-gray-500">模型推荐过程</h4>
+                  <ToolTimeline events={toolEvents} />
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        <ChatInput
-          onSend={(msg) => handleSendMessage(msg)}
-        />
+        <ChatInput onSend={(msg) => handleSendMessage(msg)} />
       </main>
 
       {/* ------------------------------- Right InputSlots + Result Panel ------------------------------- */}
@@ -304,26 +414,36 @@ export default function IntelligentDecision() {
                   <div className="mb-4">
                     <div className="flex items-center space-x-2 mb-1">
                       <Sparkles size={20} className="text-blue-800" />
-                      <h3 className="text-2xl text-blue-800 font-bold">Model recommendation</h3>
+                      <h3 className="text-2xl text-blue-800 font-bold">
+                        Model recommendation
+                      </h3>
                     </div>
                     <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-blue-800 via-blue-500 to-transparent"></div>
 
-                    <p className="text-xl text-blue-600 font-extrabold">{reconmmendedModelName}</p>
-                    <p className="text-[13px] text-gray-600 mt-1">{reconmmendedModelDesc}</p>
+                    <p className="text-xl text-blue-600 font-extrabold">
+                      {reconmmendedModelName}
+                    </p>
+                    <p className="text-[13px] text-gray-600 mt-1">
+                      {reconmmendedModelDesc}
+                    </p>
                   </div>
 
                   <div className="flex-1 overflow-y-auto space-y-6 mb-5">
                     {workflow.map((state, sIdx) => (
                       <div
-                        key={sIdx}
+                        key={`state-${state.stateName}-${sIdx}`}
                         className="relative ml-2 pl-4 pb-2 border-l-2 border-blue-200"
                       >
                         {/* state层 */}
                         <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-blue-500 border-2 border-white" />
                         <div className="mb-3">
-                          <h4 className="text-lg font-bold text-black">{state.stateName}</h4>
+                          <h4 className="text-lg font-bold text-black">
+                            {state.stateName}
+                          </h4>
                           {state.stateDescription && (
-                            <p className="text-[13px] text-gray-500">{state.stateDescription}</p>
+                            <p className="text-[13px] text-gray-500">
+                              {state.stateDescription}
+                            </p>
                           )}
                         </div>
 
@@ -331,33 +451,40 @@ export default function IntelligentDecision() {
                         <div className="space-y-3">
                           {state.events.map((event, eIdx) => (
                             <div
-                              key={eIdx}
+                              key={`event-${state.stateName}-${event.eventName}-${eIdx}`}
                               className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm"
                             >
                               <div className="mb-2 flex items-center gap-2">
                                 <div className="w-1 h-3 bg-blue-400 rounded-full" />
-                                <h5 className="text-md font-semibold text-gray-800">{event.eventName}</h5>
+                                <h5 className="text-md font-semibold text-gray-800">
+                                  {event.eventName}
+                                </h5>
                               </div>
                               {event.eventDescription && (
-                                  <p className="mb-2 text-[13px] text-gray-500">{event.eventDescription}</p>
-                                )}
+                                <p className="mb-2 text-[13px] text-gray-500">
+                                  {event.eventDescription}
+                                </p>
+                              )}
 
                               {/* input层 */}
                               <div className="space-y-3">
-                                {event.inputs.map((input) => {
+                                {event.inputs.map((input, iIdx) => {
                                   const value = uploadedData[input.key];
-                                  const isFile = input.type.toUpperCase() === "FILE";
+                                  const isFile =
+                                    input.type.toUpperCase() === "FILE";
 
                                   return (
                                     <div
-                                      key={input.key}
+                                      key={`input-${state.stateName}-${event.eventName}-${input.key}-${iIdx}`}
                                       className="flex flex-col gap-1"
                                     >
                                       <div className="flex items-center gap-2">
                                         {isFile ? (
                                           <div className="flex items-center gap-2 w-full">
                                             <label className="shrink-0 cursor-pointer flex justify-center items-center h-8 px-3 bg-gray-100 hover:bg-blue-50 text-blue-600 border border-dashed border-blue-300 rounded-md text-[13px] transition-all">
-                                              {value ? "Reupload" : "Select File"}
+                                              {value
+                                                ? "Reupload"
+                                                : "Select File"}
                                               <input
                                                 type="file"
                                                 className="hidden"
