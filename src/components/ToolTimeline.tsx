@@ -1,8 +1,11 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, CheckCircle2, XCircle, Database, Boxes } from "lucide-react";
 
+// 定义AI返回工具事件类型
 interface ToolEvent {
-  type: "running" | "success" | "error";
+  id: string;
+  parentId?: string;
+  status: "running" | "success" | "error";
   title: string;
   kind?: "search_index" | "search_model" | "model_details";
   result?: any;
@@ -41,7 +44,7 @@ function renderResult(e: ToolEvent) {
     );
   }
 
-  if (e.type === "error" && e.result) {
+  if (e.status === "error" && e.result) {
     const errorMsg =
       typeof e.result === "string"
         ? e.result
@@ -64,7 +67,7 @@ export default function ToolTimeline({ events }: { events: ToolEvent[] }) {
       <AnimatePresence>
         {events.map((event, index) => (
           <motion.div
-            key={index}
+            key={event.id}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
@@ -75,18 +78,18 @@ export default function ToolTimeline({ events }: { events: ToolEvent[] }) {
             <div className="relative z-10">
               <div
                 className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                  event.type === "running"
+                  event.status === "running"
                     ? "bg-yellow-100 text-yellow-600"
-                    : event.type === "success"
+                    : event.status === "success"
                     ? "bg-green-100 text-green-600"
                     : "bg-red-100 text-red-600"
                 }`}
               >
-                {event.type === "running" && (
+                {event.status === "running" && (
                   <Loader2 size={14} className="animate-spin" />
                 )}
-                {event.type === "success" && <CheckCircle2 size={14} />}
-                {event.type === "error" && <XCircle size={14} />}
+                {event.status === "success" && <CheckCircle2 size={14} />}
+                {event.status === "error" && <XCircle size={14} />}
               </div>
             </div>
 

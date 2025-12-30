@@ -36,9 +36,20 @@ interface WorkflowState {
   events: WorkflowEvent[];
 }
 
+// 定义消息类型
+interface Message {
+  id: string;
+  role: "user" | "AI";
+  content: string;
+  tools?: ToolEvent[];
+  started?: boolean;
+}
+
 // 定义AI返回工具事件类型
 interface ToolEvent {
-  type: "running" | "success" | "error";
+  id: string;
+  parentId?: string;
+  status: "running" | "success" | "error";
   title: string;
   kind?: "search_index" | "search_model" | "model_details";
   result?: any;
@@ -60,7 +71,7 @@ function runStatusReducer(state: String[], action: Action): String[] {
 
 export default function IntelligentDecision() {
   const [activaChatId, setActiveChatId] = useState<number | null>(1);
-  const [messages, setMessages] = useState<{ role: "user" | "AI"; content :string }[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
 
   // Pop up input slot after model recommendation
   const [reconmmendedModelName, setReconmmendedModelName] = useState<string | null>(null);
@@ -152,9 +163,53 @@ export default function IntelligentDecision() {
     executeStep();
   };
 
+  // 更新工具消息
+  const updateMessageTools = (prevMessages: Message[], newTool: ToolEvent, rootMessageId: string) => {
+    let hasAI = false;
+
+    const nextMessages = prevMessages.map((msg) => {
+      if (msg.role !== "AI" || msg.id !== rootMessageId) return msg;
+      hasAI = true;
+
+      const tools = msg.tools ?? [];
+      const index = tools.findIndex((t) => t.id === newTool.id);
+
+      const nextTools =
+        index === -1
+          ? [...tools, newTool]
+          : tools.map((t) => (t.id === newTool.id ? newTool : t));
+
+      return { ...msg, tools: nextTools };
+    });
+
+    if (!hasAI) {
+      return [
+        ...prevMessages,
+        {
+          id: rootMessageId,
+          role: "AI" as const,
+          content: "",
+          tools: [newTool],
+        },
+      ];
+    }
+
+    return nextMessages;
+  };
+
   const handleSendMessage = (prompt: string) => {
+    // 1️⃣ 为每次请求生成独立的 AI 消息
+    const rootMessageId = crypto.randomUUID();
+    let searchIndexId = "";
+    let searchModelId = "";
+    let modelDetailId = "";
+
     // 1️⃣ 显示用户输入
-    setMessages((prev) => [...prev, { role: "user", content: prompt }]);
+    setMessages((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), role: "user", content: prompt },
+      { id: rootMessageId, role: "AI", content: "", tools: [] },
+    ]);
 
     // 2️⃣ 重置状态
     setReconmmendedModelName(null);
@@ -170,6 +225,7 @@ export default function IntelligentDecision() {
 
     es.onmessage = (event) => {
       const payload = JSON.parse(event.data);
+      console.log("payload:", payload);
 
       switch (payload.type) {
         /** Agent状态 */
@@ -179,46 +235,87 @@ export default function IntelligentDecision() {
 
         /** 工具调用 */
         case "tool":
-          setToolEvents((prev) => [
-            ...prev,
-            { type: "running", title: payload.message },
-          ]);
           dispatch({ type: "ADD_STEP", payload: payload.message });
           break;
 
-        /** 工具调用完成/返回结果 */
+        /** 工具调用 */
         case "search_index":
-          setToolEvents((prev) => {
-            if (prev.length === 0) {
-              return [{
-                type: "success",
+          searchIndexId = crypto.randomUUID();
+
+          setMessages((prev) =>
+            updateMessageTools(
+              prev,
+              {
+                id: searchIndexId,
+                status: "running",
+                kind: "search_index",
+                title: "正在检索地理指标库...",
+              },
+              rootMessageId
+            )
+          );
+          break;
+
+        /** 工具调用完成/返回结果 */
+        case "search_index_end":
+          searchModelId = crypto.randomUUID();
+
+          setMessages((prev) => {
+            let next = updateMessageTools(
+              prev,
+              {
+                id: searchIndexId,
+                status: "success",
                 kind: "search_index",
                 title: "指标库检索完成",
                 result: payload.data,
-              }];
-            };
+              },
+              rootMessageId
+            );
 
-            const newEvents = [...prev];
-            newEvents[newEvents.length - 1] = {
-              type: "success",
-              kind: "search_index",
-              title: "指标库检索完成",
-              result: payload.data,
-            };
-            return newEvents;
+            next = updateMessageTools(
+              next,
+              {
+                id: searchModelId,
+                status: "running",
+                kind: "search_model",
+                title: "正在检索地理模型库...",
+              },
+              rootMessageId
+            );
+
+            return next;
           });
           break;
 
-        case "search_model":
-          setToolEvents((prev) => {
-            const newEvents = [...prev];
-            newEvents[newEvents.length - 1] = {
-              type: "success",
-              kind: "search_model",
-              title: "模型库检索完成",
-              result: payload.data,
-            };
-            return newEvents;
+        case "search_model_end":
+          modelDetailId = crypto.randomUUID();
+
+          setMessages((prev) => {
+            let next = updateMessageTools(
+              prev,
+              {
+                id: searchModelId,
+                status: "success",
+                kind: "search_model",
+                title: "模型库检索完成",
+                result: payload.data,
+              },
+              rootMessageId
+            );
+
+            next = updateMessageTools(
+              next,
+              {
+                id: modelDetailId,
+                status: "running",
+                kind: "model_details",
+                title: "正在读取模型工作流详情...",
+              },
+              rootMessageId
+            );
+
+            return next;
           });
           break;
 
@@ -227,7 +324,7 @@ export default function IntelligentDecision() {
             const newEvents = [...prev];
             newEvents[newEvents.length - 1] = {
               ...newEvents[newEvents.length - 1],
-              type: "error",
+              status: "error",
               title: payload.message || "工具执行失败",
             };
             return newEvents;
@@ -235,32 +332,37 @@ export default function IntelligentDecision() {
           break;
 
         /** LLM token 流 */
-        case "token":
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === "AI") {
-              // 拼接 token
-              return [
-                ...prev.slice(0, -1),
-                { role: "AI", content: last.content + payload.message },
-              ];
-            }
-            return [...prev, { role: "AI", content: payload.message }];
-          });
+        case "token": {
+          console.log("payload token:", payload)
+          const text = Array.isArray(payload.message)
+            ? payload.message.map((t: any) => t.text).join("")
+            : payload.message;
+
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === rootMessageId
+                ? { ...msg, content: msg.content + text, started: true }
+                : msg
+            )
+          );
           break;
+        }
 
         /** 最终模型推荐（JSON） */
-        case "model_details":
-          setToolEvents((prev) => {
-            const newEvents = [...prev];
-            newEvents[newEvents.length - 1] = {
-              type: "success",
-              kind: "model_details",
-              title: "模型推荐完成",
-              result: [],
-            };
-            return newEvents;
-          });
+        case "model_details_end":
+          setMessages((prev) =>
+            updateMessageTools(
+              prev,
+              {
+                id: modelDetailId,
+                status: "success",
+                kind: "model_details",
+                title: "模型推荐完成",
+                result: payload.data,
+              },
+              rootMessageId
+            )
+          );
 
           setReconmmendedModelName(payload.data.name);
           setReconmmendedModelDesc(payload.data.description);
@@ -348,7 +450,7 @@ export default function IntelligentDecision() {
       </aside>
 
       {/* ------------------------------- Middle Chat Panel ------------------------------- */}
-      <main className="flex flex-1 flex-col">
+      <main className="flex flex-1 flex-col min-w-[400px]">
         <div className="flex-1 p-6 overflow-y-auto bg-white min-h-0">
           {messages.length === 0 ? (
             <div className="flex flex-col justify-center items-center h-full">
@@ -359,36 +461,40 @@ export default function IntelligentDecision() {
               </p>
             </div>
           ) : (
-            <div className="flex flex-col w-full gap-y-5">
+            <div className="flex flex-col space-y-6">
               {/* 用户消息 + LLM回答 */}
               {messages.map((msg, i) => (
                 <div
-                  key={`msg-${i}`}
-                  className={`flex ${
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  }`}
+                  key={msg.id}
+                  className={`flex ${ msg.role === "user" ? "justify-end" : "justify-start" }`}
                 >
-                  <div
-                    className={`p-3 max-w-lg rounded-lg shadow-sm ${
-                      msg.role === "user"
-                        ? "bg-gray-100/50 text-black rounded-tr-none"
-                        : "bg-blue-100/50 text-black rounded-tl-none"
-                    }`}
-                  >
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                      {msg.content}
-                    </p>
+                  <div className={`flex flex-col space-y-2 max-w-[80%] ${ msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                    {msg.role === "AI" && !msg.started ? (
+                      <div className="p-3 rounded-lg bg-blue-100/40 text-xs text-gray-400 italic">
+                        正在思考中…
+                      </div>
+                    ) : (
+                      <div
+                        className={`p-3 rounded-lg shadow-sm ${
+                          msg.role === "user"
+                            ? "bg-gray-100/50 text-black rounded-tr-none self-end"
+                            : "bg-blue-100/50 text-black rounded-tl-none self-start"
+                        }`}
+                      >
+                        <p className="text-sm whitespace-pre-wrap">
+                          {msg.content}
+                        </p>
+                      </div>
+                    )}
+                    {msg.role === "AI" && msg.tools && msg.tools.length > 0 && (
+                      <div>
+                        <ToolTimeline events={msg.tools} />
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
-
-              {/* 工具事件 Timeline */}
-              {toolEvents.length > 0 && (
-                <div className="space-y-2 mt-4">
-                  <h4 className="text-sm text-gray-500">模型推荐过程</h4>
-                  <ToolTimeline events={toolEvents} />
-                </div>
-              )}
+              <div className="h-4" />
             </div>
           )}
         </div>
@@ -405,12 +511,12 @@ export default function IntelligentDecision() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 80 }}
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className="w-[32%] flex flex-col"
+            className="flex-none w-full md:w-[35%] lg:w-[30%] min-w-[320px] max-w-[600px] flex flex-col"
           >
             <div className="flex-1 bg-gray-100/50 rounded-lg my-5 mr-5 p-4 shadow">
               {/* Now, LLM has recommend the most suitable model, and user needs to upload data */}
               {reconmmendedModelName && !isRunning && (
-                <div>
+                <div className="flex-1 custom-scrollbar">
                   <div className="mb-4">
                     <div className="flex items-center space-x-2 mb-1">
                       <Sparkles size={20} className="text-blue-800" />
