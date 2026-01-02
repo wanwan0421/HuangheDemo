@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import ChatInput from "../components/ChatInput";
 import { SquarePen, Search, Sparkles, Activity } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import ModelExecuteProcess from "../components/ModelExecuteProcess"
+import ModelExecuteProcess from "../components/ModelExecuteProcess";
 import ToolTimeline from "../components/ToolTimeline";
 
 // 后端API基础URL
@@ -41,28 +41,28 @@ interface Message {
   id: string;
   role: "user" | "AI";
   content: string;
-  tools?: ToolEvent[];
+  type?: "text" | "tool"; // 区分消息类型
+  tools?: ToolEvent[]; // 如果是tool类型存放工具数据
   started?: boolean;
 }
 
 // 定义AI返回工具事件类型
 interface ToolEvent {
   id: string;
-  parentId?: string;
   status: "running" | "success" | "error";
   title: string;
-  kind?: "search_index" | "search_model" | "model_details";
+  kind: "search_relevant_indices" | "search_relevant_models" | "get_model_details";
   result?: any;
 }
 
 // Reducer Action Types
-type Action = { type: 'ADD_STEP', payload: string } | { type: 'RESET' };
+type Action = { type: "ADD_STEP"; payload: string } | { type: "RESET" };
 
 function runStatusReducer(state: String[], action: Action): String[] {
   switch (action.type) {
-    case 'ADD_STEP':
+    case "ADD_STEP":
       return [...state, action.payload];
-    case 'RESET':
+    case "RESET":
       return [];
     default:
       return state;
@@ -74,8 +74,12 @@ export default function IntelligentDecision() {
   const [messages, setMessages] = useState<Message[]>([]);
 
   // Pop up input slot after model recommendation
-  const [reconmmendedModelName, setReconmmendedModelName] = useState<string | null>(null);
-  const [reconmmendedModelDesc, setReconmmendedModelDesc] = useState<string | null>(null);
+  const [reconmmendedModelName, setReconmmendedModelName] = useState<
+    string | null
+  >(null);
+  const [reconmmendedModelDesc, setReconmmendedModelDesc] = useState<
+    string | null
+  >(null);
   const [workflow, setWorkflow] = useState<WorkflowState[]>([]);
 
   // Store user uploaded files
@@ -88,12 +92,23 @@ export default function IntelligentDecision() {
   const [runStatus, dispatch] = React.useReducer(runStatusReducer, []);
   const [isRunning, setIsRunning] = useState(false);
 
-  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
+  // 聊天窗口自动滚动到底部
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages]);
 
   // Simulate LLM to recommend model
   const simulateLLMRecommend = () => {
     setReconmmendedModelName("城市扩张预测模拟模型");
-    setReconmmendedModelDesc("基于MABR的城市扩张预测模拟模型，适用于中小型城市的土地利用变化预测。");
+    setReconmmendedModelDesc(
+      "基于MABR的城市扩张预测模拟模型，适用于中小型城市的土地利用变化预测。"
+    );
     setWorkflow([
       {
         stateName: "preparation_DLPS",
@@ -103,32 +118,52 @@ export default function IntelligentDecision() {
             eventName: "土地利用栅格",
             eventDescription: "准备输入数据，包括地理数据和属性数据。",
             inputs: [
-              { name: "土地利用栅格", key: "landuse_raster", type: "file", description: "上传土地利用类型的栅格数据文件" }
-            ]
+              {
+                name: "土地利用栅格",
+                key: "landuse_raster",
+                type: "file",
+                description: "上传土地利用类型的栅格数据文件",
+              },
+            ],
           },
           {
             eventName: "人口密度数据",
             eventDescription: "准备输入数据，包括地理数据和属性数据。",
             inputs: [
-              { name: "人口密度数据", key: "population_density", type: "file", description: "上传人口密度数据文件" }
-            ]
+              {
+                name: "人口密度数据",
+                key: "population_density",
+                type: "file",
+                description: "上传人口密度数据文件",
+              },
+            ],
           },
           {
             eventName: "交通路网类型",
             eventDescription: "准备输入数据，包括地理数据和属性数据。",
             inputs: [
-              { name: "交通路网类型", key: "road_type", type: "text", description: "输入交通路网类型" }
-            ]
+              {
+                name: "交通路网类型",
+                key: "road_type",
+                type: "text",
+                description: "输入交通路网类型",
+              },
+            ],
           },
           {
             eventName: "预测年份",
             eventDescription: "准备输入数据，包括地理数据和属性数据。",
             inputs: [
-              { name: "预测年份", key: "predict_year", type: "number", description: "输入预测年份" },
-            ]
+              {
+                name: "预测年份",
+                key: "predict_year",
+                type: "number",
+                description: "输入预测年份",
+              },
+            ],
           },
-        ]
-      }
+        ],
+      },
     ]);
   };
 
@@ -163,218 +198,204 @@ export default function IntelligentDecision() {
     executeStep();
   };
 
-  // 更新工具消息
-  const updateMessageTools = (prevMessages: Message[], newTool: ToolEvent, rootMessageId: string) => {
-    let hasAI = false;
-
-    const nextMessages = prevMessages.map((msg) => {
-      if (msg.role !== "AI" || msg.id !== rootMessageId) return msg;
-      hasAI = true;
-
-      const tools = msg.tools ?? [];
-      const index = tools.findIndex((t) => t.id === newTool.id);
-
-      const nextTools =
-        index === -1
-          ? [...tools, newTool]
-          : tools.map((t) => (t.id === newTool.id ? newTool : t));
-
-      return { ...msg, tools: nextTools };
-    });
-
-    if (!hasAI) {
-      return [
-        ...prevMessages,
-        {
-          id: rootMessageId,
-          role: "AI" as const,
-          content: "",
-          tools: [newTool],
-        },
-      ];
-    }
-
-    return nextMessages;
-  };
-
   const handleSendMessage = (prompt: string) => {
-    // 1️⃣ 为每次请求生成独立的 AI 消息
-    const rootMessageId = crypto.randomUUID();
-    let searchIndexId = "";
-    let searchModelId = "";
-    let modelDetailId = "";
-
-    // 1️⃣ 显示用户输入
+    // 为每次请求生成独立的 AI 消息
+    // 先插入用户消息
+    const userMessageId = crypto.randomUUID();
+    const toolMessageId = crypto.randomUUID();
     setMessages((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), role: "user", content: prompt },
-      { id: rootMessageId, role: "AI", content: "", tools: [] },
+      { id: userMessageId, role: "user", content: prompt },
+
+      {
+        id: toolMessageId,
+        role: "AI",
+        type: "tool",
+        content: "",
+        tools: [],
+      },
     ]);
 
-    // 2️⃣ 重置状态
+    // 重置状态
     setReconmmendedModelName(null);
     setReconmmendedModelDesc(null);
     setWorkflow([]);
     dispatch({ type: "RESET" });
     setIsRunning(false);
 
-    // 3️⃣ 建立 SSE 连接（Node → Python → Agent）
+    // 建立 SSE 连接（Node → Python → Agent）
     const es = new EventSource(
       `${BACK_URL}/llm-agent/chat?query=${encodeURIComponent(prompt)}`
     );
 
-    es.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-      console.log("payload:", payload);
-
+    const handlePayload = (payload: any) => {
       switch (payload.type) {
-        /** Agent状态 */
-        case "status":
-          dispatch({ type: "ADD_STEP", payload: payload.message });
-          break;
-
-        /** 工具调用 */
-        case "tool":
-          dispatch({ type: "ADD_STEP", payload: payload.message });
-          break;
-
-        /** 工具调用 */
-        case "search_index":
-          searchIndexId = crypto.randomUUID();
-
-          setMessages((prev) =>
-            updateMessageTools(
-              prev,
-              {
-                id: searchIndexId,
-                status: "running",
-                kind: "search_index",
-                title: "正在检索地理指标库...",
-              },
-              rootMessageId
-            )
-          );
-          break;
-
-        /** 工具调用完成/返回结果 */
-        case "search_index_end":
-          searchModelId = crypto.randomUUID();
-
-          setMessages((prev) => {
-            let next = updateMessageTools(
-              prev,
-              {
-                id: searchIndexId,
-                status: "success",
-                kind: "search_index",
-                title: "指标库检索完成",
-                result: payload.data,
-              },
-              rootMessageId
-            );
-
-            next = updateMessageTools(
-              next,
-              {
-                id: searchModelId,
-                status: "running",
-                kind: "search_model",
-                title: "正在检索地理模型库...",
-              },
-              rootMessageId
-            );
-
-            return next;
-          });
-          break;
-
-        case "search_model_end":
-          modelDetailId = crypto.randomUUID();
-
-          setMessages((prev) => {
-            let next = updateMessageTools(
-              prev,
-              {
-                id: searchModelId,
-                status: "success",
-                kind: "search_model",
-                title: "模型库检索完成",
-                result: payload.data,
-              },
-              rootMessageId
-            );
-
-            next = updateMessageTools(
-              next,
-              {
-                id: modelDetailId,
-                status: "running",
-                kind: "model_details",
-                title: "正在读取模型工作流详情...",
-              },
-              rootMessageId
-            );
-
-            return next;
-          });
-          break;
-
-        case "error":
-          setToolEvents((prev) => {
-            const newEvents = [...prev];
-            newEvents[newEvents.length - 1] = {
-              ...newEvents[newEvents.length - 1],
-              status: "error",
-              title: payload.message || "工具执行失败",
-            };
-            return newEvents;
-          });
-          break;
-
-        /** LLM token 流 */
         case "token": {
-          console.log("payload token:", payload)
-          const text = Array.isArray(payload.message)
-            ? payload.message.map((t: any) => t.text).join("")
-            : payload.message;
+          const text = payload.message ?? "";
+          if (!text) return;
 
+          setMessages((prev) => {
+            const lastMsg = prev[prev.length - 1];
+            // 如果最后一条已经是AI文本块，则更新它
+            if (lastMsg && lastMsg.role === "AI" && lastMsg.type === "text") {
+              return prev.map((msg, idx) =>
+                idx === prev.length - 1
+                  ? { ...msg, content: msg.content + text, started: true }
+                  : msg
+              );
+            }
+            // 否则新起一块AI文本消息
+            return [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: "AI",
+                content: text,
+                type: "text",
+                started: true,
+              },
+            ];
+          });
+          break;
+        }
+
+        // 开始检索相关指标
+        case "search_relevant_indices": {
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === rootMessageId
-                ? { ...msg, content: msg.content + text, started: true }
+              msg.id === toolMessageId
+                ? {
+                    ...msg,
+                    tools: [
+                      ...(msg.tools ?? []),
+                      {
+                        id: crypto.randomUUID(),
+                        kind: "search_relevant_indices",
+                        status: "running",
+                        title: "正在检索地理指标库...",
+                      },
+                    ],
+                  }
                 : msg
             )
           );
           break;
         }
 
-        /** 最终模型推荐（JSON） */
-        case "model_details_end":
+        // 指标检索完成以及开始检索模型
+        case "search_index_end": {
           setMessages((prev) =>
-            updateMessageTools(
-              prev,
-              {
-                id: modelDetailId,
-                status: "success",
-                kind: "model_details",
-                title: "模型推荐完成",
-                result: payload.data,
-              },
-              rootMessageId
+            prev.map((msg) => {
+              if (msg.id !== toolMessageId) return msg;
+
+              return {
+                ...msg,
+                tools: msg.tools
+                  ?.map((t) =>
+                    t.kind === "search_relevant_indices"
+                      ? {
+                          ...t,
+                          status: "success" as const,
+                          title: "指标库检索完成",
+                          result: payload.data,
+                        }
+                      : t
+                  )
+                  .concat({
+                    id: crypto.randomUUID(),
+                    kind: "search_relevant_models",
+                    status: "running",
+                    title: "正在检索地理模型库...",
+                  }),
+              };
+            })
+          );
+          break;
+        }
+
+        // 模型检索完成以及开始读取模型详情
+        case "search_model_end": {
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg.id !== toolMessageId) return msg;
+
+              return {
+                ...msg,
+                tools: msg.tools
+                  ?.map((t) =>
+                    t.kind === "search_relevant_models"
+                      ? {
+                          ...t,
+                          status: "success" as const,
+                          title: "模型库检索完成",
+                          result: payload.data,
+                        }
+                      : t
+                  )
+                  .concat({
+                    id: crypto.randomUUID(),
+                    kind: "get_model_details",
+                    status: "running",
+                    title: "正在读取模型工作流详情...",
+                  }),
+              };
+            })
+          );
+          break;
+        }
+
+        // 最终模型推荐完成
+        case "model_details_end": {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === toolMessageId
+                ? {
+                    ...msg,
+                    tools: msg.tools?.map((t) =>
+                      t.kind === "get_model_details"
+                        ? {
+                            ...t,
+                            status: "success",
+                            title: "模型工作流详情读取完成",
+                            result: payload.data,
+                          }
+                        : t
+                    ),
+                  }
+                : msg
             )
           );
 
-          setReconmmendedModelName(payload.data.name);
-          setReconmmendedModelDesc(payload.data.description);
-          setWorkflow(payload.data.workflow);
+          setReconmmendedModelName(payload.data?.name ?? "");
+          setReconmmendedModelDesc(payload.data?.description ?? "");
+          setWorkflow(payload.data?.workflow ?? []);
           setIsRunning(false);
+          break;
+        }
+
+        case "error":
+          console.error("Agent Error:", payload.message);
           es.close();
+          setIsRunning(false);
           break;
       }
     };
 
-    es.onerror = () => {
+    es.onmessage = (e: MessageEvent) => {
+      if (!e.data) return;
+
+      try {
+        const payload = JSON.parse(e.data);
+        handlePayload(payload);
+      } catch (err) {
+        console.error("Invalid SSE data:", e.data);
+      }
+    };
+
+    es.onerror = (err) => {
+      console.error("[SSE error]", err);
       es.close();
+      setIsRunning(false);
     };
   };
 
@@ -410,16 +431,16 @@ export default function IntelligentDecision() {
             }}
           >
             <SquarePen size={20} />
-            <span>New Chat</span>
+            <span className="text-base">New Chat</span>
           </button>
 
           <button className="w-full py-2 px-2 rounded-lg flex items-center gap-2 hover:bg-gray-700 transition">
             <Search size={20} />
-            <span>Search Chats</span>
+            <span className="text-base">Search Chats</span>
           </button>
         </div>
 
-        <h3 className="font-bold text-gray-200 mb-2 px-2">
+        <h3 className="font-bold text-base text-gray-200 mb-2 px-2">
           Historical Records
         </h3>
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
@@ -429,7 +450,7 @@ export default function IntelligentDecision() {
             return (
               <button
                 key={i}
-                className={`w-full text-left p-2 rounded-lg transition ${
+                className={`w-full text-left p-2 rounded-lg transition text-base ${
                   isActive
                     ? "bg-gray-100/50 text-white"
                     : "hover:bg-gray-700 text-white"
@@ -443,7 +464,7 @@ export default function IntelligentDecision() {
 
         <button
           onClick={simulateLLMRecommend}
-          className="mt-6 bg-green-600 p-2 rounded hover:bg-green-700"
+          className="mt-6 bg-green-600 p-2 rounded hover:bg-green-700 text-base"
         >
           ⚡ 模拟LLM推荐模型
         </button>
@@ -451,10 +472,10 @@ export default function IntelligentDecision() {
 
       {/* ------------------------------- Middle Chat Panel ------------------------------- */}
       <main className="flex flex-1 flex-col min-w-[400px]">
-        <div className="flex-1 p-6 overflow-y-auto bg-white min-h-0">
+        <div ref={scrollRef} className="flex-1 p-6 overflow-y-auto bg-white min-h-0">
           {messages.length === 0 ? (
             <div className="flex flex-col justify-center items-center h-full">
-              <p className="text-gray-400 text-center">
+              <p className="text-gray-400 text-center text-base">
                 👋 Enter your instructions to start the decision process
                 <br />
                 (example: help me predict land use change)
@@ -463,32 +484,35 @@ export default function IntelligentDecision() {
           ) : (
             <div className="flex flex-col space-y-6">
               {/* 用户消息 + LLM回答 */}
-              {messages.map((msg, i) => (
+              {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`flex ${ msg.role === "user" ? "justify-end" : "justify-start" }`}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  <div className={`flex flex-col space-y-2 max-w-[80%] ${ msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                    {msg.role === "AI" && !msg.started ? (
-                      <div className="p-3 rounded-lg bg-blue-100/40 text-xs text-gray-400 italic">
-                        正在思考中…
+                  <div className="flex flex-col space-y-2 max-w-[85%]">
+                    {/* 渲染：用户消息 */}
+                    {msg.role === "user" && (
+                      <div className="p-3 rounded-lg bg-gray-200/50 text-black rounded-tr-none self-end">
+                        <p className="text-base">{msg.content}</p>
                       </div>
-                    ) : (
-                      <div
-                        className={`p-3 rounded-lg shadow-sm ${
-                          msg.role === "user"
-                            ? "bg-gray-100/50 text-black rounded-tr-none self-end"
-                            : "bg-blue-100/50 text-black rounded-tl-none self-start"
-                        }`}
-                      >
-                        <p className="text-sm whitespace-pre-wrap">
+                    )}
+
+                    {/* 渲染：AI 文本块 */}
+                    {msg.role === "AI" && msg.type === "text" && (
+                      <div className="p-2 text-black">
+                        <p className="text-base whitespace-pre-wrap">
                           {msg.content}
                         </p>
                       </div>
                     )}
-                    {msg.role === "AI" && msg.tools && msg.tools.length > 0 && (
-                      <div>
-                        <ToolTimeline events={msg.tools} />
+
+                    {/* 渲染：AI 工具块 */}
+                    {msg.role === "AI" && msg.type === "tool" && msg.tools?.length && (
+                      <div className="self-start w-full">
+                        <div className="p-2 rounded-lg shadow-lg bg-blue-100/20 border border-blue-500">
+                          <ToolTimeline events={msg.tools} />
+                        </div>
+                        
                       </div>
                     )}
                   </div>
@@ -520,16 +544,16 @@ export default function IntelligentDecision() {
                   <div className="mb-4">
                     <div className="flex items-center space-x-2 mb-1">
                       <Sparkles size={20} className="text-blue-800" />
-                      <h3 className="text-2xl text-blue-800 font-bold">
+                      <h3 className="text-3xl text-blue-800 font-bold">
                         Model recommendation
                       </h3>
                     </div>
                     <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-blue-800 via-blue-500 to-transparent"></div>
 
-                    <p className="text-xl text-blue-600 font-extrabold">
+                    <p className="text-2xl text-blue-800 font-extrabold">
                       {reconmmendedModelName}
                     </p>
-                    <p className="text-[13px] text-gray-600 mt-1">
+                    <p className="text-sm text-gray-600 mt-1">
                       {reconmmendedModelDesc}
                     </p>
                   </div>
@@ -543,11 +567,11 @@ export default function IntelligentDecision() {
                         {/* state层 */}
                         <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-blue-500 border-2 border-white" />
                         <div className="mb-3">
-                          <h4 className="text-lg font-bold text-black">
+                          <h4 className="text-xl font-bold text-black">
                             {state.stateName}
                           </h4>
                           {state.stateDescription && (
-                            <p className="text-[13px] text-gray-500">
+                            <p className="text-sm text-gray-500">
                               {state.stateDescription}
                             </p>
                           )}
@@ -562,12 +586,12 @@ export default function IntelligentDecision() {
                             >
                               <div className="mb-2 flex items-center gap-2">
                                 <div className="w-1 h-3 bg-blue-400 rounded-full" />
-                                <h5 className="text-md font-semibold text-gray-800">
+                                <h5 className="text-lg font-semibold text-gray-800">
                                   {event.eventName}
                                 </h5>
                               </div>
                               {event.eventDescription && (
-                                <p className="mb-2 text-[13px] text-gray-500">
+                                <p className="mb-2 text-sm text-gray-500">
                                   {event.eventDescription}
                                 </p>
                               )}
@@ -587,7 +611,7 @@ export default function IntelligentDecision() {
                                       <div className="flex items-center gap-2">
                                         {isFile ? (
                                           <div className="flex items-center gap-2 w-full">
-                                            <label className="shrink-0 cursor-pointer flex justify-center items-center h-8 px-3 bg-gray-100 hover:bg-blue-50 text-blue-600 border border-dashed border-blue-300 rounded-md text-[13px] transition-all">
+                                            <label className="shrink-0 cursor-pointer flex justify-center items-center h-8 px-3 bg-gray-100 hover:bg-blue-50 text-blue-600 border border-dashed border-blue-300 rounded-md text-sm transition-all">
                                               {value
                                                 ? "Reupload"
                                                 : "Select File"}
@@ -604,7 +628,7 @@ export default function IntelligentDecision() {
                                                 }
                                               />
                                             </label>
-                                            <span className="text-[12px] truncate text-gray-400">
+                                            <span className="text-xs truncate text-gray-400">
                                               {value instanceof File
                                                 ? value.name
                                                 : "No data detected !"}
@@ -612,7 +636,7 @@ export default function IntelligentDecision() {
                                           </div>
                                         ) : (
                                           <input
-                                            className="w-full text-[13px] border-b border-gray-200 focus:border-blue-500 outline-none py-1 transition-colors text-black"
+                                            className="w-full text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 transition-colors text-black"
                                             placeholder={`${input.description}`}
                                             onChange={(e) =>
                                               setUploadedData((p) => ({
@@ -637,7 +661,7 @@ export default function IntelligentDecision() {
                   <button
                     disabled={!isAllInputsFilled()}
                     onClick={handleRun}
-                    className="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+                    className="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
                   >
                     Running
                   </button>
@@ -649,7 +673,7 @@ export default function IntelligentDecision() {
                 <div className="space-y-3">
                   <div className="w-full flex items-center space-x-2">
                     <Activity size={20} className="text-blue-800" />
-                    <h3 className="text-2xl text-blue-800 font-bold">
+                    <h3 className="text-3xl text-blue-800 font-bold">
                       Model execution process
                     </h3>
                   </div>

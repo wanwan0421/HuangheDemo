@@ -1,25 +1,24 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, CheckCircle2, XCircle, Database, Boxes } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 
 // 定义AI返回工具事件类型
 interface ToolEvent {
   id: string;
-  parentId?: string;
   status: "running" | "success" | "error";
   title: string;
-  kind?: "search_index" | "search_model" | "model_details";
+  kind: "search_relevant_indices" | "search_relevant_models" | "get_model_details";
   result?: any;
 }
 
 function renderResult(e: ToolEvent) {
   // 指标库：只显示 name_en / name_cn
-  if (e.kind === "search_index" && Array.isArray(e.result?.indices)) {
+  if (e.kind === "search_relevant_indices" && Array.isArray(e.result?.indices)) {
     return (
-      <div className="flex gap-1">
+      <div className="flex gap-2">
         {e.result.indices.map((i: any, idx: number) => (
           <span
             key={idx}
-            className="inline-flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded border border-blue-100 text-xs whitespace-nowrap"
+            className="inline-flex items-center bg-blue-800 text-white px-2 py-1 rounded text-sm whitespace-nowrap"
           >
             {i.name_cn || i.name_en}
           </span>
@@ -29,13 +28,13 @@ function renderResult(e: ToolEvent) {
   }
 
   // 模型库：只显示 modelName
-  if (e.kind === "search_model" && Array.isArray(e.result?.models)) {
+  if (e.kind === "search_relevant_models" && Array.isArray(e.result?.models)) {
     return (
-      <div className="flex gap-1 flex-wrap">
+      <div className="flex gap-2 flex-wrap">
         {e.result.models.map((m: any, idx: number) => (
           <span
             key={idx}
-            className="inline-flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded border border-blue-100 text-xs whitespace-nowrap"
+            className="inline-flex items-center bg-blue-800 text-white px-2 py-1 rounded text-sm whitespace-nowrap"
           >
             {m.modelName}
           </span>
@@ -51,7 +50,7 @@ function renderResult(e: ToolEvent) {
         : e.result?.error?.message || JSON.stringify(e.result);
 
     return (
-      <div className="bg-red-50 border border-red-100 text-red-700 px-3 py-2 rounded-md text-xs font-mono break-all leading-relaxed">
+      <div className="bg-red-50 border border-red-100 text-red-700 px-3 py-2 rounded-md text-sm font-mono break-all leading-relaxed">
         {errorMsg}
       </div>
     );
@@ -61,11 +60,9 @@ function renderResult(e: ToolEvent) {
 
 export default function ToolTimeline({ events }: { events: ToolEvent[] }) {
   return (
-    <div className="relative mt-6 pl-6 space-y-6">
-      {/* 竖线 */}
-      <div className="absolute left-[11px] top-2 bottom-2 w-px bg-gray-200" />
+    <div className="relative space-y-4">
       <AnimatePresence>
-        {events.map((event, index) => (
+        {events.map((event) => (
           <motion.div
             key={event.id}
             initial={{ opacity: 0, y: 8 }}
@@ -95,13 +92,13 @@ export default function ToolTimeline({ events }: { events: ToolEvent[] }) {
 
             {/* 事件内容 */}
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-900 mb-1">
+              <p className="text-base font-bold text-gray-900 mb-1">
                 {event.title}
               </p>
 
               {/* 结果展示 */}
               {event.result && (
-                <div className="mt-2 text-sm text-gray-700">
+                <div className="mt-2 text-base text-gray-700">
                   {renderResult(event)}
                 </div>
               )}
