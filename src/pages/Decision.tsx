@@ -8,11 +8,11 @@ import ToolTimeline from "../components/ToolTimeline";
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
 
-interface InputField {
-  name: string;
-  key: string;
-  type: "file" | "text" | "number";
-}
+// interface InputField {
+//   name: string;
+//   key: string;
+//   type: "file" | "text" | "number";
+// }
 
 // 定义模型event的输入数据
 interface WorkflowInput {
@@ -70,10 +70,10 @@ function runStatusReducer(state: String[], action: Action): String[] {
 }
 
 export default function IntelligentDecision() {
-  const [activaChatId, setActiveChatId] = useState<number | null>(1);
+  const [activaChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
 
-  // Pop up input slot after model recommendation
+  // 推荐的模型信息
   const [reconmmendedModelName, setReconmmendedModelName] = useState<
     string | null
   >(null);
@@ -82,15 +82,35 @@ export default function IntelligentDecision() {
   >(null);
   const [workflow, setWorkflow] = useState<WorkflowState[]>([]);
 
-  // Store user uploaded files
+  // 用户上传的数据
   const [uploadedData, setUploadedData] = useState<
     Record<string, File | string | number | null>
   >({});
 
-  // Show running state
-  // const [runStatus, setRunStatus] = useState<String[]>([]);
+  // 设置模型运行状态
   const [runStatus, dispatch] = React.useReducer(runStatusReducer, []);
   const [isRunning, setIsRunning] = useState(false);
+
+  // 设置对话列表状态
+  const [sessionList, setSessionList] = useState<any[]>([]);
+  // 记录当前操作是用户从左侧列表点击切换还是发送一条消息时自动创建新对话
+  const isManualSwitch = React.useRef(false);
+
+  // 定义初始状态或使用重置函数
+  const resetToInitialState = (keepSessionId: boolean = false) => {
+    setMessages([]);
+    setReconmmendedModelName(null);
+    setReconmmendedModelDesc(null);
+    setWorkflow([]);
+    setUploadedData({});
+    setIsRunning(false);
+    dispatch({ type: "RESET" });
+
+    if (!keepSessionId) {
+      setActiveChatId(null);
+      isManualSwitch.current = false;
+    }
+  };
 
   // 聊天窗口自动滚动到底部
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -102,6 +122,76 @@ export default function IntelligentDecision() {
       });
     }
   }, [messages]);
+
+  // 处理对话切换或者初始化
+  React.useEffect(() => {
+    // 如果没有ID或者是发送消息时自动设置的ID，则不触发历史加载
+    if (!activaChatId || !isManualSwitch.current) return;
+
+    resetToInitialState(true);
+
+    const currentSession = sessionList.find(s => s._id === activaChatId);
+    if (currentSession?.recommendedModel) {
+      setReconmmendedModelName(currentSession.recommendedModel.name);
+      setReconmmendedModelDesc(currentSession.recommendedModel.description);
+      setWorkflow(currentSession.recommendedModel.workflow);
+    }
+
+    // 调用后端获取历史消息的接口
+    fetch(`${BACK_URL}/chat/sessions/${activaChatId}/messages`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data)) {
+          const mappedMessages: Message[] = data.data.map((m: any) => {
+            const isAI = m.role !== "user";
+
+            // 转换工具数据格式
+            const mappedTools = Array.isArray(m.tools)
+              ? m.tools.map((t: any) => ({
+                  kind: t.tool,
+                  status: "success" as const,
+                  title:
+                    t.type === "search_index_end"
+                      ? "指标库检索完成"
+                      : t.type === "search_model_end"
+                      ? "模型库检索完成"
+                      : "详情读取完成",
+                  result: t.data,
+                  id: crypto.randomUUID(),
+                }))
+              : [];
+
+            return {
+              id: m._id || crypto.randomUUID(),
+              role: isAI ? "AI" : "user",
+              content: m.content || "",
+              type: mappedTools.length > 0 ? "tool" : "text",
+              tools: mappedTools,
+              started: true,
+            };
+          });
+          setMessages(mappedMessages);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch chat history:", err);
+      });
+  }, [activaChatId]);
+
+  // 初始化获取用户所有的历史对话
+  React.useEffect(() => {
+    fetch(`${BACK_URL}/chat/sessions`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setSessionList(data.data);
+          // // 如果有数据且当前没选中，默认选择第一个
+          // if (data.data.length > 0 && !activaChatId) {
+          //   setActiveChatId(data.data[data.data.length - 1]._id);
+          // }
+        }
+      });
+  }, []);
 
   // Simulate LLM to recommend model
   const simulateLLMRecommend = () => {
@@ -198,9 +288,34 @@ export default function IntelligentDecision() {
     executeStep();
   };
 
-  const handleSendMessage = (prompt: string) => {
+  const handleSendMessage = async (prompt: string) => {
+    // 创建对话Id
+    let currentSessionId = activaChatId;
+    if (!currentSessionId) {
+      try {
+        const response = await fetch(`${BACK_URL}/chat/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: prompt.slice(0, 20) }),
+        });
+        const data = await response.json();
+
+        if (data.success && data.data._id) {
+          currentSessionId = data.data._id;
+          setActiveChatId(currentSessionId);
+          // 更新左侧对话列表
+          setSessionList((prev) => [data.data, ...prev]);
+        } else {
+          throw new Error("Failed to create new session");
+        }
+      } catch (err) {
+        console.error("Error creating new session:", err);
+        return;
+      }
+    }
+
     // 为每次请求生成独立的 AI 消息
-    // 先插入用户消息
+    // 先插入用户消息和一个空的工具消息
     const userMessageId = crypto.randomUUID();
     const toolMessageId = crypto.randomUUID();
     setMessages((prev) => [
@@ -225,7 +340,9 @@ export default function IntelligentDecision() {
 
     // 建立 SSE 连接（Node → Python → Agent）
     const es = new EventSource(
-      `${BACK_URL}/llm-agent/chat?query=${encodeURIComponent(prompt)}`
+      `${BACK_URL}/chat/sessions/${currentSessionId}/chat?query=${encodeURIComponent(
+        prompt
+      )}`
     );
 
     const handlePayload = (payload: any) => {
@@ -386,6 +503,7 @@ export default function IntelligentDecision() {
 
       try {
         const payload = JSON.parse(e.data);
+        console.log("Received SSE payload:", payload);
         handlePayload(payload);
       } catch (err) {
         console.error("Invalid SSE data:", e.data);
@@ -425,10 +543,7 @@ export default function IntelligentDecision() {
         <div className="mb-5 space-y-2">
           <button
             className="w-full py-2 px-2 rounded-lg flex items-center gap-2 hover:bg-gray-700 transition"
-            onClick={() => {
-              const newId = Date.now();
-              setActiveChatId(newId);
-            }}
+            onClick={() => resetToInitialState(false)}
           >
             <SquarePen size={20} />
             <span className="text-base">New Chat</span>
@@ -444,22 +559,24 @@ export default function IntelligentDecision() {
           Historical Records
         </h3>
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-          {[1, 2, 3].map((i) => {
-            const isActive = i === activaChatId;
-
-            return (
-              <button
-                key={i}
-                className={`w-full text-left p-2 rounded-lg transition text-base ${
-                  isActive
-                    ? "bg-gray-100/50 text-white"
-                    : "hover:bg-gray-700 text-white"
-                }`}
-              >
-                Chat record {i}
-              </button>
-            );
-          })}
+          {sessionList.map((session) => (
+            <button
+              key={session._id}
+              className={`w-full text-left p-2 rounded-lg transition ${
+                activaChatId === session._id
+                  ? "bg-gray-100/50 text-white"
+                  : "hover:bg-gray-700 text-white"
+              }`}
+              onClick={() => {
+                isManualSwitch.current = true;
+                setActiveChatId(session._id);
+              }}
+            >
+              <div className="text-base truncate w-full">
+                {session.title || "新对话"}
+              </div>
+            </button>
+          ))}
         </div>
 
         <button
@@ -472,7 +589,10 @@ export default function IntelligentDecision() {
 
       {/* ------------------------------- Middle Chat Panel ------------------------------- */}
       <main className="flex flex-1 flex-col min-w-[400px]">
-        <div ref={scrollRef} className="flex-1 p-6 overflow-y-auto bg-white min-h-0">
+        <div
+          ref={scrollRef}
+          className="flex-1 p-6 overflow-y-auto bg-white min-h-0"
+        >
           {messages.length === 0 ? (
             <div className="flex flex-col justify-center items-center h-full">
               <p className="text-gray-400 text-center text-base">
@@ -487,7 +607,9 @@ export default function IntelligentDecision() {
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  className={`flex ${
+                    msg.role === "user" ? "justify-end" : "justify-start"
+                  }`}
                 >
                   <div className="flex flex-col space-y-2 max-w-[85%]">
                     {/* 渲染：用户消息 */}
@@ -497,22 +619,26 @@ export default function IntelligentDecision() {
                       </div>
                     )}
 
-                    {/* 渲染：AI 文本块 */}
-                    {msg.role === "AI" && msg.type === "text" && (
-                      <div className="p-2 text-black">
-                        <p className="text-base whitespace-pre-wrap">
-                          {msg.content}
-                        </p>
-                      </div>
-                    )}
+                    {/* 渲染AI消息区域 */}
+                    {msg.role === "AI" && (
+                      <div className="flex flex-col space-y-2 w-full">
+                        {/* 渲染：AI 工具块 */}
+                        {msg.tools?.length && (
+                          <div className="self-start w-full">
+                            <div className="p-2 rounded-lg shadow-lg bg-blue-100/20 border border-blue-500">
+                              <ToolTimeline events={msg.tools} />
+                            </div>
+                          </div>
+                        )}
 
-                    {/* 渲染：AI 工具块 */}
-                    {msg.role === "AI" && msg.type === "tool" && msg.tools?.length && (
-                      <div className="self-start w-full">
-                        <div className="p-2 rounded-lg shadow-lg bg-blue-100/20 border border-blue-500">
-                          <ToolTimeline events={msg.tools} />
-                        </div>
-                        
+                        {/* 渲染：AI 文本块 */}
+                        {msg.content && (
+                          <div className="p-2 text-black">
+                            <p className="text-base whitespace-pre-wrap">
+                              {msg.content}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
