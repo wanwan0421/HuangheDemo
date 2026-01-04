@@ -130,7 +130,7 @@ export default function IntelligentDecision() {
 
     resetToInitialState(true);
 
-    const currentSession = sessionList.find(s => s._id === activaChatId);
+    const currentSession = sessionList.find((s) => s._id === activaChatId);
     if (currentSession?.recommendedModel) {
       setReconmmendedModelName(currentSession.recommendedModel.name);
       setReconmmendedModelDesc(currentSession.recommendedModel.description);
@@ -255,37 +255,6 @@ export default function IntelligentDecision() {
         ],
       },
     ]);
-  };
-
-  // User clik running button
-  const handleRun = () => {
-    setIsRunning(true);
-    dispatch({ type: "RESET" });
-
-    const steps = [
-      "Check data format",
-      "Data preprocessing",
-      "Model core computing",
-      "Output result generation in progress",
-    ];
-    let i = 0;
-
-    const executeStep = () => {
-      if (i < steps.length) {
-        console.log("i:", i);
-        console.log("steps[i]:", steps[i]);
-
-        // 使用dispatch进行同步更新
-        dispatch({ type: "ADD_STEP", payload: steps[i] });
-
-        i++;
-        setTimeout(executeStep, 1000);
-      } else {
-        dispatch({ type: "ADD_STEP", payload: "Model execution finished!" });
-      }
-    };
-    // 强制立即启动
-    executeStep();
   };
 
   const handleSendMessage = async (prompt: string) => {
@@ -523,7 +492,7 @@ export default function IntelligentDecision() {
     workflow.forEach((state) => {
       state.events.forEach((event) => {
         event.inputs.forEach((input) => {
-          allKeys.push(input.key);
+          allKeys.push(input.name);
         });
       });
     });
@@ -534,6 +503,76 @@ export default function IntelligentDecision() {
         (key) => uploadedData[key] !== undefined && uploadedData[key] !== null
       )
     );
+  };
+
+  // User clik running button
+  const handleRun = async () => {
+    setIsRunning(true);
+    dispatch({ type: "RESET" });
+    const formData = new FormData();
+
+    // 构造基础信息
+    const modelRunInfo = {
+      modelName: reconmmendedModelName,
+      workflow: workflow,
+    };
+    formData.append("info", JSON.stringify(modelRunInfo));
+
+    // 构造输入数据
+    workflow.forEach((state) => {
+      state.events.forEach((event) => {
+        event.inputs.forEach((input) => {
+          const value = uploadedData[input.name];
+          if (value !== undefined && value !== null) {
+            // 使用state@@@event@@@key方便后端拆解映射
+            const fieldKey = `${state.stateName}@@@${event.eventName}@@@${input.name}`;
+
+            if (value instanceof File) {
+              formData.append(fieldKey, value);
+            } else {
+              formData.append(fieldKey, value.toString());
+            }
+          }
+        });
+      });
+    });
+
+    try {
+      const response = await fetch(`${BACK_URL}/model/run`, {
+        method: "POST",
+        body: formData,
+      });
+      const responseData = await response.json();
+      const result = responseData.result;
+      console.log("Model run initiated, response:", result);
+
+      const steps = [
+        "Check data format",
+        "Data preprocessing",
+        "Model core computing",
+        "Output result generation in progress",
+      ];
+      let i = 0;
+
+      const executeStep = () => {
+        if (i < steps.length) {
+          console.log("i:", i);
+          console.log("steps[i]:", steps[i]);
+
+          // 使用dispatch进行同步更新
+          dispatch({ type: "ADD_STEP", payload: steps[i] });
+
+          i++;
+          setTimeout(executeStep, 1000);
+        } else {
+          dispatch({ type: "ADD_STEP", payload: "Model execution finished!" });
+        }
+      };
+      // 强制立即启动
+      executeStep();
+    } catch (error) {
+      console.error("Error running model:", error);
+    }
   };
 
   return (
@@ -661,7 +700,7 @@ export default function IntelligentDecision() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 80 }}
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className="flex-none w-full md:w-[35%] lg:w-[30%] min-w-[320px] max-w-[600px] flex flex-col"
+            className="flex-none w-full md:w-[35%] lg:w-[30%] min-w-[320px] max-w-[600px] flex flex-col overflow-y-auto"
           >
             <div className="flex-1 bg-gray-100/50 rounded-lg my-5 mr-5 p-4 shadow">
               {/* Now, LLM has recommend the most suitable model, and user needs to upload data */}
@@ -725,13 +764,13 @@ export default function IntelligentDecision() {
                               {/* input层 */}
                               <div className="space-y-3">
                                 {event.inputs.map((input, iIdx) => {
-                                  const value = uploadedData[input.key];
+                                  const value = uploadedData[input.name];
                                   const isFile =
                                     input.type.toUpperCase() === "FILE";
 
                                   return (
                                     <div
-                                      key={`input-${state.stateName}-${event.eventName}-${input.key}-${iIdx}`}
+                                      key={`input-${state.stateName}-${event.eventName}-${input.name}-${iIdx}`}
                                       className="flex flex-col gap-1"
                                     >
                                       <div className="flex items-center gap-2">
@@ -747,7 +786,7 @@ export default function IntelligentDecision() {
                                                 onChange={(e) =>
                                                   setUploadedData((p) => ({
                                                     ...p,
-                                                    [input.key]:
+                                                    [input.name]:
                                                       e.target.files?.[0] ||
                                                       null,
                                                   }))
@@ -767,7 +806,7 @@ export default function IntelligentDecision() {
                                             onChange={(e) =>
                                               setUploadedData((p) => ({
                                                 ...p,
-                                                [input.key]: e.target.value,
+                                                [input.name]: e.target.value,
                                               }))
                                             }
                                           />
