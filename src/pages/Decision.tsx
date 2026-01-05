@@ -525,7 +525,7 @@ export default function IntelligentDecision() {
           const value = uploadedData[input.name];
           if (value !== undefined && value !== null) {
             // 使用state@@@event@@@key方便后端拆解映射
-            const fieldKey = `${state.stateName}@@@${event.eventName}@@@${input.name}`;
+            const fieldKey = `${state.stateName}@@@${event.eventName}@@@${input.name}@@@${input.type}`;
 
             if (value instanceof File) {
               formData.append(fieldKey, value);
