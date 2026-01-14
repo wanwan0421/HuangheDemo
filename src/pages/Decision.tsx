@@ -4,56 +4,10 @@ import { SquarePen, Search, Sparkles, Activity } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ModelExecuteProcess from "../components/ModelExecuteProcess";
 import ToolTimeline from "../components/ToolTimeline";
+import type { WorkflowState, Message} from "../types";
 
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
-
-// interface InputField {
-//   name: string;
-//   key: string;
-//   type: "file" | "text" | "number";
-// }
-
-// 定义模型event的输入数据
-interface WorkflowInput {
-  name: string;
-  key: string;
-  type: string;
-  description: string;
-}
-
-// 定义模型event
-interface WorkflowEvent {
-  eventName: string;
-  eventDescription: string;
-  inputs: WorkflowInput[];
-}
-
-// 定义模型state
-interface WorkflowState {
-  stateName: string;
-  stateDescription: string;
-  events: WorkflowEvent[];
-}
-
-// 定义消息类型
-interface Message {
-  id: string;
-  role: "user" | "AI";
-  content: string;
-  type?: "text" | "tool"; // 区分消息类型
-  tools?: ToolEvent[]; // 如果是tool类型存放工具数据
-  started?: boolean;
-}
-
-// 定义AI返回工具事件类型
-interface ToolEvent {
-  id: string;
-  status: "running" | "success" | "error";
-  title: string;
-  kind: "search_relevant_indices" | "search_relevant_models" | "get_model_details";
-  result?: any;
-}
 
 // Reducer Action Types
 type Action = { type: "ADD_STEP"; payload: string } | { type: "RESET" };
@@ -70,7 +24,7 @@ function runStatusReducer(state: String[], action: Action): String[] {
 }
 
 export default function IntelligentDecision() {
-  const [activaChatId, setActiveChatId] = useState<string | null>(null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
 
   // 推荐的模型信息
@@ -126,11 +80,11 @@ export default function IntelligentDecision() {
   // 处理对话切换或者初始化
   React.useEffect(() => {
     // 如果没有ID或者是发送消息时自动设置的ID，则不触发历史加载
-    if (!activaChatId || !isManualSwitch.current) return;
+    if (!activeChatId || !isManualSwitch.current) return;
 
     resetToInitialState(true);
 
-    const currentSession = sessionList.find((s) => s._id === activaChatId);
+    const currentSession = sessionList.find((s) => s._id === activeChatId);
     if (currentSession?.recommendedModel) {
       setReconmmendedModelName(currentSession.recommendedModel.name);
       setReconmmendedModelDesc(currentSession.recommendedModel.description);
@@ -138,7 +92,7 @@ export default function IntelligentDecision() {
     }
 
     // 调用后端获取历史消息的接口
-    fetch(`${BACK_URL}/chat/sessions/${activaChatId}/messages`)
+    fetch(`${BACK_URL}/chat/sessions/${activeChatId}/messages`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.data)) {
@@ -176,7 +130,7 @@ export default function IntelligentDecision() {
       .catch((err) => {
         console.error("Failed to fetch chat history:", err);
       });
-  }, [activaChatId]);
+  }, [activeChatId]);
 
   // 初始化获取用户所有的历史对话
   React.useEffect(() => {
@@ -186,80 +140,16 @@ export default function IntelligentDecision() {
         if (data.success) {
           setSessionList(data.data);
           // // 如果有数据且当前没选中，默认选择第一个
-          // if (data.data.length > 0 && !activaChatId) {
+          // if (data.data.length > 0 && !activeChatId) {
           //   setActiveChatId(data.data[data.data.length - 1]._id);
           // }
         }
       });
   }, []);
 
-  // Simulate LLM to recommend model
-  const simulateLLMRecommend = () => {
-    setReconmmendedModelName("城市扩张预测模拟模型");
-    setReconmmendedModelDesc(
-      "基于MABR的城市扩张预测模拟模型，适用于中小型城市的土地利用变化预测。"
-    );
-    setWorkflow([
-      {
-        stateName: "preparation_DLPS",
-        stateDescription: "基于地块的凸包的MABR对地块进行分割。",
-        events: [
-          {
-            eventName: "土地利用栅格",
-            eventDescription: "准备输入数据，包括地理数据和属性数据。",
-            inputs: [
-              {
-                name: "土地利用栅格",
-                key: "landuse_raster",
-                type: "file",
-                description: "上传土地利用类型的栅格数据文件",
-              },
-            ],
-          },
-          {
-            eventName: "人口密度数据",
-            eventDescription: "准备输入数据，包括地理数据和属性数据。",
-            inputs: [
-              {
-                name: "人口密度数据",
-                key: "population_density",
-                type: "file",
-                description: "上传人口密度数据文件",
-              },
-            ],
-          },
-          {
-            eventName: "交通路网类型",
-            eventDescription: "准备输入数据，包括地理数据和属性数据。",
-            inputs: [
-              {
-                name: "交通路网类型",
-                key: "road_type",
-                type: "text",
-                description: "输入交通路网类型",
-              },
-            ],
-          },
-          {
-            eventName: "预测年份",
-            eventDescription: "准备输入数据，包括地理数据和属性数据。",
-            inputs: [
-              {
-                name: "预测年份",
-                key: "predict_year",
-                type: "number",
-                description: "输入预测年份",
-              },
-            ],
-          },
-        ],
-      },
-    ]);
-  };
-
   const handleSendMessage = async (prompt: string) => {
     // 创建对话Id
-    let currentSessionId = activaChatId;
+    let currentSessionId = activeChatId;
     if (!currentSessionId) {
       try {
         const response = await fetch(`${BACK_URL}/chat/sessions`, {
@@ -472,7 +362,6 @@ export default function IntelligentDecision() {
 
       try {
         const payload = JSON.parse(e.data);
-        console.log("Received SSE payload:", payload);
         handlePayload(payload);
       } catch (err) {
         console.error("Invalid SSE data:", e.data);
@@ -484,6 +373,138 @@ export default function IntelligentDecision() {
       es.close();
       setIsRunning(false);
     };
+  };
+
+  const handleDateScan = async (file: File, inputKey: string) => {
+    if (!activeChatId) {
+      console.error("No active session found");
+      return;
+    }
+
+    const toolMessageId = crypto.randomUUID();
+    const scanToolId = crypto.randomUUID();
+
+    // 插入到前面的messages数组中
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: toolMessageId,
+        role: "AI",
+        type: "data",
+        content: "",
+        tools: [
+          {
+            id: scanToolId,
+            kind: "tool_prepare_file",
+            status: "running",
+            title: `正在扫描数据: ${file.name}`,
+          },
+        ],
+      },
+    ]);
+
+    try {
+      // 先将文件上传到后端获取临时路径
+      const forData = new FormData();
+      forData.append("file", file);
+      forData.append("sessionId", activeChatId);
+
+      const uploadRes = await fetch(`${BACK_URL}/data/upload`, {
+        method: "POST",
+        body: forData,
+      });
+      const uploadData = await uploadRes.json();
+
+      if (!uploadData.success) throw new Error("文件上传失败");
+      const serverFilePath = uploadData.filePath;
+
+      // 建立 SSE 连接进行数据扫描
+      const es = new EventSource(
+        `${BACK_URL}/data-mapping/data-scan?filePath=${encodeURIComponent(
+          serverFilePath
+        )}&sessionId=${activeChatId}`
+      );
+
+      es.onmessage = (e) => {
+        if (!e.data) return;
+        const payload = JSON.parse(e.data);
+        console.log("Data Scan SSE Payload:", payload);
+
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== toolMessageId) return msg;
+
+            let updatedTools = [...(msg.tools || [])];
+
+            // 工具开始运行
+            if (payload.type === "tool_call") {
+              // 如果是新工具，追加tools
+              if (!updatedTools.find((t) => t.kind === payload.tool)) {
+                updatedTools.push({
+                  id: crypto.randomUUID(),
+                  kind: payload.tool,
+                  status: "running",
+                  title: getToolTitle(payload.tool),
+                });
+              }
+            }
+
+            // 工具运行完成
+            if (payload.type === "tool_result") {
+              updatedTools = updatedTools.map((t) =>
+                t.kind === payload.tool
+                  ? {
+                      ...t,
+                      status: "success" as const,
+                      title: getFinishToolTitle(payload.tool),
+                      result: payload.data,
+                    }
+                  : t
+              );
+
+              if (payload.tool === "tool_generate_profile") {
+                es.close();
+              }
+            }
+            return { ...msg, tools: updatedTools };
+          })
+        );
+      };
+
+      es.onerror = (err) => {
+        console.error("[SSE error]", err);
+        es.close();
+      }
+
+      const getToolTitle = (toolKind: string) => {
+        const mapping: any = {
+          tool_detect_format: "正在检测数据格式...",
+          tool_analyze_raster: "正在分析栅格数据...",
+          tool_analyze_vector: "正在分析矢量数据...",
+          tool_analyze_table: "正在分析表格数据...",
+          tool_analyze_timeseries: "正在分析时间序列数据...",
+          tool_analyze_parameter: "正在分析参数数据...",
+          tool_generate_profile: "正在生成数据概况...",
+        };
+        return mapping[toolKind] || "正在处理数据...";
+      };
+
+      const getFinishToolTitle = (toolKind: string) => {
+        const mapping: any = {
+          tool_prepare_file: "数据扫描完成",
+          tool_detect_format: "数据格式检测完成",
+          tool_analyze_raster: "栅格数据分析完成",
+          tool_analyze_vector: "矢量数据分析完成",
+          tool_analyze_table: "表格数据分析完成",
+          tool_analyze_timeseries: "时间序列数据分析完成",
+          tool_analyze_parameter: "参数数据分析完成",
+          tool_generate_profile: "数据概况生成完成",
+        };
+        return mapping[toolKind];
+      };
+    } catch (error) {
+      console.error("Error scanning data file:", error);
+    }
   };
 
   // 用于检查所有输入数据是否已经填写完整
@@ -602,7 +623,7 @@ export default function IntelligentDecision() {
             <button
               key={session._id}
               className={`w-full text-left p-2 rounded-lg transition ${
-                activaChatId === session._id
+                activeChatId === session._id
                   ? "bg-gray-100/50 text-white"
                   : "hover:bg-gray-700 text-white"
               }`}
@@ -617,13 +638,6 @@ export default function IntelligentDecision() {
             </button>
           ))}
         </div>
-
-        <button
-          onClick={simulateLLMRecommend}
-          className="mt-6 bg-green-600 p-2 rounded hover:bg-green-700 text-base"
-        >
-          ⚡ 模拟LLM推荐模型
-        </button>
       </aside>
 
       {/* ------------------------------- Middle Chat Panel ------------------------------- */}
@@ -660,11 +674,11 @@ export default function IntelligentDecision() {
 
                     {/* 渲染AI消息区域 */}
                     {msg.role === "AI" && (
-                      <div className="flex flex-col space-y-2 w-full">
+                      <div className="flex flex-col space-y-2 w-full max-w-4xl">
                         {/* 渲染：AI 工具块 */}
                         {msg.tools?.length && (
                           <div className="self-start w-full">
-                            <div className="p-2 rounded-lg shadow-lg bg-blue-100/20 border border-blue-500">
+                            <div className="p-2 rounded-lg shadow-lg bg-blue-100/20 border border-blue-500 md:w-[800px]">
                               <ToolTimeline events={msg.tools} />
                             </div>
                           </div>
@@ -783,14 +797,19 @@ export default function IntelligentDecision() {
                                               <input
                                                 type="file"
                                                 className="hidden"
-                                                onChange={(e) =>
-                                                  setUploadedData((p) => ({
-                                                    ...p,
-                                                    [input.name]:
-                                                      e.target.files?.[0] ||
-                                                      null,
-                                                  }))
-                                                }
+                                                onChange={(e) => {
+                                                  const file = e.target.files?.[0];
+                                                  if (file) {
+                                                    setUploadedData((p) => ({
+                                                      ...p,
+                                                      [input.name]:
+                                                        e.target.files?.[0] ||
+                                                        null,
+                                                    }));
+
+                                                    handleDateScan(file, input.name);
+                                                  }
+                                                }}
                                               />
                                             </label>
                                             <span className="text-xs truncate text-gray-400">

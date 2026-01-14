@@ -7,8 +7,6 @@ import Index_system from '../assets/Index_system.png';
 import Intelligent_decision from '../assets/Intelligent_decision.png';
 import { useOutletContext } from 'react-router-dom';
 import AnimatedContent from '../components/AnimatedContent';
-import NNULogo from '../assets/NNU.png';
-import NSCCZZ from '../assets/NSCCZZ.png';
 
 const carouselImages = [huanghe1, huanghe2, huanghe3];
 const logos =[
@@ -52,13 +50,13 @@ const TailwindCarousel: React.FC<TailwindCarouselProps> = ({ images }) => {
 
             <div className="absolute top-2/5 left-1/2 -translate-x-1/2 -translate-y-1/2 px-6 max-w-8xl w-full mx-auto text-center z-20">
                 <h1 className={'mt-4 font-sans font-extrabold tracking-tight text-center text-[45px] text-white text-shadow-lg'}>
-                    The Yellow River Digital Twin Simulation Platform
+                    GeoAgent: Intelligent Multi-Agent Execution Framework
                 </h1>
                 <p className={'mt-4 text-white text-shadow-lg leading-relaxed text-lg font-bold'}>
-                    This is a comprehensive geographical analysis platform integrating simulation resources, index system and intelligent decision-making.
+                    An autonomous simulation platform driven by Multi-Agent collaboration, bridging the gap between heterogeneous resources through intelligent data-model adaptation.
                 </p>
                 <p className={'text-white text-shadow-lg leading-relaxed text-lg font-bold'}>
-                    It helps geographical simulation research through visualization, intelligence and high scalability.
+                    Empowering geographical research with natural language driven task planning, automated resource orchestration, and closed-loop self-healing.
                 </p>
             </div>
 

@@ -1,13 +1,46 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import type { ToolEvent } from "../types";
 
-// 定义AI返回工具事件类型
-interface ToolEvent {
-  id: string;
-  status: "running" | "success" | "error";
-  title: string;
-  kind: "search_relevant_indices" | "search_relevant_models" | "get_model_details";
-  result?: any;
+function ProfileItem({ 
+  label, 
+  value, 
+  isCode = false, 
+  color = "gray" 
+}: { 
+  label: string; 
+  value: any; 
+  isCode?: boolean;
+  color?: string;
+}) {
+  return (
+    <div className="flex flex-col space-y-1">
+      <span className="text-[14px] font-bold text-black uppercase">
+        {label}
+      </span>
+      <div className={`
+        ${isCode ? 'text-[13px] leading-relaxed break-all bg-gray-50 p-1.5 border border-gray-100' : 'text-[13px]'}
+        text-gray-800 rounded
+      `}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// 渲染动态字段：排除掉已知的通用大类，剩下的以 Key-Value 对形式展示
+function renderDynamicFields(profile: any) {
+  const commonKeys = ['form', 'spatial', 'temporal', 'file_path', 'file_type', 'primary_file', 'confidence', 'status'];
+  
+  return Object.entries(profile)
+    .filter(([key, value]) => !commonKeys.includes(key) && value !== null && typeof value !== 'object')
+    .map(([key, value]) => (
+      <ProfileItem 
+        key={key} 
+        label={key.replace(/_/g, ' ')}
+        value={String(value)} 
+      />
+    ));
 }
 
 function renderResult(e: ToolEvent) {
@@ -39,6 +72,70 @@ function renderResult(e: ToolEvent) {
             {m.modelName}
           </span>
         ))}
+      </div>
+    );
+  }
+
+  if (e.kind === "tool_generate_profile" && e.result?.profile) {
+    console.log("Profile Result:", e.result);
+    const p = e.result.profile;
+    return (
+      <div className="bg-white overflow-hidden shadow-sm">
+        {/* 顶部类型条 */}
+        <div className="bg-blue-800 px-3 py-2 flex justify-between items-center">
+          <span className="text-white text-base font-bold uppercase tracking-wider">
+            {p.form || "Unknown"} Data Profile
+          </span>
+          <span className="text-blue-100 text-[12px] font-mono">
+            {p.file_type}
+          </span>
+        </div>
+
+        {/* 核心参数网格 */}
+        <div className="p-3 space-y-4">
+          <div className="space-y-2">
+            <h4 className="text-[16px] font-bold text-blue-700 uppercase border-b border-blue-500 pb-1">空间域信息</h4>
+            <div className="grid grid-cols-1 gap-2">
+              <ProfileItem
+                label="CRS"
+                value={p.spatial.crs || "未知参考系"}
+                isCode
+              />
+              {p.spatial.extent && (
+                <ProfileItem
+                  label="Extent"
+                  value={
+                    Array.isArray(p.spatial.extent)
+                      ? p.spatial.extent.map((v: number) => v.toFixed(2)).join(", ")
+                      : "N/A"
+                  }
+                  isCode
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="text-[16px] font-bold text-blue-700 uppercase border-b border-blue-500 pb-1">时间域信息</h4>
+            <div className="grid grid-cols-1 gap-2">
+              <ProfileItem
+                label="Temporal Coverage"
+                value={p.temporal.has_time || "Unknown"}
+              />
+              <div className="grid grid-cols-2 gap-2">
+              <ProfileItem label="起始时间" value={p.temporal.start_time || "N/A"} />
+              <ProfileItem label="结束时间" value={p.temporal.end_time || "N/A"} />
+            </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+          <h4 className="text-[16px] font-bold text-blue-700 uppercase border-b border-blue-500 pb-1">特殊信息</h4>
+          <div className="grid grid-cols-2 gap-3">
+            {renderDynamicFields(p)}
+          </div>
+        </div>
+        </div>
       </div>
     );
   }
