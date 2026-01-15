@@ -46,6 +46,5 @@ export interface ToolEvent {
     | "tool_analyze_table"
     | "tool_analyze_timeseries"
     | "tool_analyze_parameter"
-    | "tool_generate_profile";
   result?: any;
 }

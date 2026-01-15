@@ -383,6 +383,7 @@ export default function IntelligentDecision() {
 
     const toolMessageId = crypto.randomUUID();
     const scanToolId = crypto.randomUUID();
+    let isDone = false;
 
     // 插入到前面的messages数组中
     setMessages((prev) => [
@@ -427,6 +428,7 @@ export default function IntelligentDecision() {
 
       es.onmessage = (e) => {
         if (!e.data) return;
+
         const payload = JSON.parse(e.data);
         console.log("Data Scan SSE Payload:", payload);
 
@@ -457,21 +459,23 @@ export default function IntelligentDecision() {
                       ...t,
                       status: "success" as const,
                       title: getFinishToolTitle(payload.tool),
-                      result: payload.data,
+                      result: {profile: payload.profile},
                     }
                   : t
               );
-
-              if (payload.tool === "tool_generate_profile") {
-                es.close();
-              }
             }
             return { ...msg, tools: updatedTools };
           })
         );
+
+        if (payload.type === "final") {
+          es.close();
+          return;
+        }
       };
 
       es.onerror = (err) => {
+        if (isDone) return;
         console.error("[SSE error]", err);
         es.close();
       }
@@ -483,8 +487,7 @@ export default function IntelligentDecision() {
           tool_analyze_vector: "正在分析矢量数据...",
           tool_analyze_table: "正在分析表格数据...",
           tool_analyze_timeseries: "正在分析时间序列数据...",
-          tool_analyze_parameter: "正在分析参数数据...",
-          tool_generate_profile: "正在生成数据概况...",
+          tool_analyze_parameter: "正在分析参数数据..."
         };
         return mapping[toolKind] || "正在处理数据...";
       };
@@ -497,8 +500,7 @@ export default function IntelligentDecision() {
           tool_analyze_vector: "矢量数据分析完成",
           tool_analyze_table: "表格数据分析完成",
           tool_analyze_timeseries: "时间序列数据分析完成",
-          tool_analyze_parameter: "参数数据分析完成",
-          tool_generate_profile: "数据概况生成完成",
+          tool_analyze_parameter: "参数数据分析完成"
         };
         return mapping[toolKind];
       };
@@ -584,7 +586,7 @@ export default function IntelligentDecision() {
           dispatch({ type: "ADD_STEP", payload: steps[i] });
 
           i++;
-          setTimeout(executeStep, 1000);
+          setTimeout(executeStep, 72000);
         } else {
           dispatch({ type: "ADD_STEP", payload: "Model execution finished!" });
         }
