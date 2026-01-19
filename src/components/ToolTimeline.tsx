@@ -6,7 +6,7 @@ import type { ToolEvent } from "../types";
 function ProfileItem({ label, value, isCode = false }: { label: string; value: any; isCode?: boolean }) {
   return (
     <div className="group flex flex-col px-2 rounded-md transition-colors hover:bg-slate-50 border border-transparent hover:border-slate-100">
-      <span className="text-[15px] font-black text-black tracking-wide mb-2">
+      <span className="text-[15px] font-bold text-black tracking-wide mb-2">
         {label.replace(/_/g, ' ')}
       </span>
       <div className={`
@@ -21,7 +21,7 @@ function ProfileItem({ label, value, isCode = false }: { label: string; value: a
 
 // 渲染动态字段：排除掉已知的通用大类，剩下的以 Key-Value 对形式展示
 function renderDynamicFields(profile: any) {
-  const commonKeys = ['form', 'Spatial', 'Temporal', 'file_path', 'file_type', 'primary_file', 'confidence', 'status'];
+  const commonKeys = ['Form', 'Spatial', 'Temporal', 'file_path', 'file_type', 'primary_file', 'Confidence', 'status'];
   
   return Object.entries(profile)
     .filter(([key, value]) => !commonKeys.includes(key) && value !== null)
@@ -39,9 +39,9 @@ function renderDynamicFields(profile: any) {
                   key={idx}
                   className="flex items-center gap-2 mt-1 px-2 py-1 bg-blue-50 border border-blue-100 rounded text-xs"
                 >
-                  <span className="text-black text-[14px]">{item.name}</span>
-                  <span className="text-black text-[14px]"> | </span>
-                  <span className="text-black text-[14px] italic">{item.type}</span>
+                  <span className="text-gray-500 text-[14px]">{item.name}</span>
+                  <span className="text-gray-500 text-[14px]"> | </span>
+                  <span className="text-gray-500 text-[14px] italic">{item.type}</span>
                 </div>
               ))}
             </div>
@@ -148,10 +148,8 @@ function renderResult(e: ToolEvent) {
     );
   }
 
-  if (e.kind.startsWith("tool_analyze_") && e.result?.profile) {
-    const p = e.result.profile;
-    const s = p.Spatial;
-    const crsInfo = s.Crs;
+  if (e.kind.startsWith("tool_analyze_") && e.result) {
+    const p = e.result;
     return (
       <div className="bg-white border border-slate-200 rounded-t-xl overflow-hidden shadow-xl w-full max-w-full my-2">
         {/* 头部设计 */}
@@ -169,110 +167,154 @@ function renderResult(e: ToolEvent) {
 
           <div className="text-right">
             <div className="text-white text-[14px] font-bold px-2 py-0.5 bg-blue-400/20 rounded-full border border-white/20 tracking-wide">
-              Form | {p.form}
+              Form | {p.Form}
             </div>
           </div>
         </div>
 
         <div className="p-4 space-y-6 bg-slate-50/30">
           {/* 第一部分：空间域 */}
-          <section className="relative pl-4">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-700 rounded-full"></div>
-            <h4 className="text-[16px] font-bold text-blue-700 tracking-wide flex items-center gap-2">
-              Spatial Domain{" "}
-              <span className="h-px flex-1 bg-linear-to-r from-blue-700 via-blue-100 to-transparent"></span>
-            </h4>
-            <div className="p-2 grid grid-cols-1 gap-">
-              {typeof crsInfo === "object" && crsInfo !== null ? (
-                <div className="col-span-2">
-                  <div className="col-span-2 flex flex-col mb-2">
-                    <span className="text-[15px] font-black text-black tracking-wide mb-2">
-                      CRS
-                    </span>
-                    <span className="text-[14px] text-gray-500 italic">
-                      {crsInfo.Name}
-                    </span>
+          {p.Spatial && (
+            <section className="relative pl-4">
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-700 rounded-full"></div>
+              <h4 className="text-[16px] font-bold text-blue-700 tracking-wide flex items-center gap-2">
+                Spatial Domain{" "}
+                <span className="h-px flex-1 bg-linear-to-r from-blue-700 via-blue-100 to-transparent"></span>
+              </h4>
+              <div className="grid grid-cols-1 gap-2 mb-2">
+                {p.Spatial.Crs && typeof p.Spatial.Crs === "object" ? (
+                  <div className="col-span-2">
+                    <div className="col-span-2 flex flex-col px-2 mb-2 hover:bg-slate-50 rounded-md border border-transparent hover:border-slate-100">
+                      <span className="text-[15px] font-black text-black tracking-wide">
+                        CRS
+                      </span>
+                      <span className="text-[14px] text-gray-500 italic pt-2">
+                        {p.Spatial.Crs.Name}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col px-2 hover:bg-slate-50 rounded-md border border-transparent hover:border-slate-100">
+                        <span className="text-[15px] text-black font-bold">
+                          Datum_plane
+                        </span>
+                        <span className="text-[14px] text-gray-500 italic pt-2">
+                          {p.Spatial.Crs.Datum}
+                        </span>
+                      </div>
+                      <div className="flex flex-col px-2 hover:bg-slate-50 rounded-md border border-transparent hover:border-slate-100">
+                        <span className="text-[15px] text-black font-bold">
+                          Central_meridian
+                        </span>
+                        <span className="text-[14px] text-gray-500 italic pt-2">
+                          {p.Spatial.Crs.Central_meridian}
+                        </span>
+                      </div>
+                      <div className="flex flex-col px-2 hover:bg-slate-50 rounded-md border border-transparent hover:border-slate-100">
+                        <span className="text-[15px] text-black font-bold">
+                          Projection_method
+                        </span>
+                        <span className="text-[14px] text-gray-500 italic pt-2">
+                          {p.Spatial.Crs.Projection}
+                        </span>
+                      </div>
+                      <div className="flex flex-col px-2 hover:bg-slate-50 rounded-md border border-transparent hover:border-slate-100">
+                        <span className="text-[15px] text-black font-bold">
+                          Unit
+                        </span>
+                        <span className="text-[14px] text-gray-500 italic pt-2">
+                          {p.Spatial.Crs.Unit}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex flex-col">
-                      <span className="text-[15px] text-black font-bold">
-                        Datum_plane
+                ) : (
+                  <ProfileItem
+                    label="CRS"
+                    value={String(p.Spatial.Crs?.Wkt || "Unknown")}
+                    isCode
+                  />
+                )}
+              </div>
+
+              {p.Spatial.Extent && (
+                <div className="mt-2 px-2">
+                  <div className="text-[15px] font-bold text-black mb-2">
+                    Extent
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-y-1">
+                    {/* 横向范围 */}
+                    <div className="flex justify-start items-center">
+                      <span className="text-[15px] text-black">
+                        {p.Spatial.Extent.label_x}:
                       </span>
-                      <span className="text-[14px] text-gray-500 italic">
-                        {crsInfo.Datum}
-                      </span>
+                      <code className="px-2 py-1 text-[15px] text-gray-500 italic">
+                        {p.Spatial.Extent.min_x?.toLocaleString()} ~{" "}
+                        {p.Spatial.Extent.max_x?.toLocaleString()}{" "}
+                        {p.Spatial.Extent.unit}
+                      </code>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-[15px] text-black font-bold">
-                        Projection_method
+
+                    {/* 纵向范围 */}
+                    <div className="flex justify-start items-center">
+                      <span className="text-[15px] text-black">
+                        {p.Spatial.Extent.label_y}:
                       </span>
-                      <span className="text-[14px] text-gray-500 italic">
-                        {crsInfo.Projection}
-                      </span>
+                      <code className="px-2 py-1 text-[15px] text-gray-500 italic">
+                        {p.Spatial.Extent.min_y?.toLocaleString()} ~{" "}
+                        {p.Spatial.Extent.max_y?.toLocaleString()}{" "}
+                        {p.Spatial.Extent.unit}
+                      </code>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-[15px] text-black font-bold">
-                        Central_meridian
-                      </span>
-                      <span className="text-[14px] text-gray-500 italic">
-                        {crsInfo.Central_meridian}
-                      </span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[15px] text-black font-bold">
-                        Unit
-                      </span>
-                      <span className="text-[14px] text-gray-500 italic">
-                        {crsInfo.Unit}
-                      </span>
+
+                    {/* 跨度计算（这是用户最能看懂的：这块地有多大） */}
+                    <div className="mt-1 pt-2 border-t border-dashed border-slate-300 text-[13px] text-blue-600 italic">
+                      Dimension span:{" "}
+                      {(
+                        p.Spatial.Extent?.max_x - p.Spatial.Extent?.min_x
+                      ).toFixed(2)}{" "}
+                      ×{" "}
+                      {(
+                        p.Spatial.Extent?.max_y - p.Spatial.Extent?.min_y
+                      ).toFixed(2)}{" "}
+                      ({p.Spatial.Extent?.unit})
                     </div>
                   </div>
                 </div>
-              ) : (
-                <ProfileItem
-                  label="CRS"
-                  value={String(crsInfo.Wkt || "Unknown")}
-                  isCode
-                />
               )}
-            </div>
-
-            {p.Spatial.Extent && (
-                <ProfileItem
-                  label="Extent"
-                  value={p.Spatial.Extent.map((v: number) => v.toFixed(3)).join(
-                    " , "
-                  )}
-                  isCode
-                />
-              )}
-          </section>
+            </section>
+          )}
 
           {/* 第二部分：时间域 */}
-          <section className="relative pl-4">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-400 rounded-full"></div>
-            <h4 className="text-[16px] font-bold text-orange-400 tracking-wide flex items-center gap-2">
-              Temporal Domain{" "}
-              <span className="h-px flex-1 bg-linear-to-r from-orange-400 via-orange-100 to-transparent"></span>
-            </h4>
-            <div className="grid grid-cols-2 gap-1">
-              <div className="col-span-2">
+          {p.Temporal && (
+            <section className="relative pl-4">
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-400 rounded-full"></div>
+              <h4 className="text-[16px] font-bold text-orange-400 tracking-wide flex items-center gap-2">
+                Temporal Domain{" "}
+                <span className="h-px flex-1 bg-linear-to-r from-orange-400 via-orange-100 to-transparent"></span>
+              </h4>
+              <div className="grid grid-cols-2 gap-1">
+                <div className="col-span-2">
+                  <ProfileItem
+                    label="Timeline Status"
+                    value={
+                      p.Temporal?.Has_time
+                        ? "Time-Series Enabled"
+                        : "Static Snapshot"
+                    }
+                  />
+                </div>
                 <ProfileItem
-                  label="Timeline Status"
-                  value={
-                    p.Temporal?.Has_time
-                      ? "Time-Series Enabled"
-                      : "Static Snapshot"
-                  }
+                  label="Start"
+                  value={p.Temporal?.start_time || "N/A"}
+                />
+                <ProfileItem
+                  label="End"
+                  value={p.Temporal?.end_time || "N/A"}
                 />
               </div>
-              <ProfileItem
-                label="Start"
-                value={p.Temporal?.start_time || "N/A"}
-              />
-              <ProfileItem label="End" value={p.Temporal?.end_time || "N/A"} />
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* 第三部分：动态特有属性 */}
           <section className="relative pl-4">
@@ -290,7 +332,7 @@ function renderResult(e: ToolEvent) {
         {/* 底部装饰 */}
         <div className="bg-slate-50 px-4 py-2 border-t border-slate-100 flex justify-between items-center text-[9px] text-slate-400">
           <span>AUTO-GENERATED BY AGENT</span>
-          <span>CONFIDENCE: {(p.confidence * 100).toFixed(0)}%</span>
+          <span>CONFIDENCE: {(p.Confidence * 100).toFixed(0)}%</span>
         </div>
       </div>
     );

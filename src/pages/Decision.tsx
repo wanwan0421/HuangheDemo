@@ -109,8 +109,24 @@ export default function IntelligentDecision() {
                       ? "指标库检索完成"
                       : t.type === "search_model_end"
                       ? "模型库检索完成"
-                      : "详情读取完成",
-                  result: t.data,
+                      : t.type === "model_details_end"
+                      ? "详情读取完成"
+                      : t.tool === "tool_prepare_file"
+                      ? "数据准备完成"
+                      : t.tool === "tool_detect_format"
+                      ? "数据格式检测完成"
+                      : t.tool === "tool_analyze_raster"
+                      ? "栅格数据分析完成"
+                      : t.tool === "tool_analyze_vector"
+                      ? "矢量数据分析完成"
+                      : t.tool === "tool_analyze_table"
+                      ? "表格数据分析完成"
+                      : t.tool === "tool_analyze_timeseries"
+                      ? "时间序列数据分析完成"
+                      : t.tool === "tool_analyze_parameter"
+                      ? "参数数据分析完成"
+                      : "工具执行完成",
+                  result: t.data || t.profile,
                   id: crypto.randomUUID(),
                 }))
               : [];
@@ -375,7 +391,7 @@ export default function IntelligentDecision() {
     };
   };
 
-  const handleDateScan = async (file: File, inputKey: string) => {
+  const handleDateScan = async (file: File) => {
     if (!activeChatId) {
       console.error("No active session found");
       return;
@@ -421,9 +437,9 @@ export default function IntelligentDecision() {
 
       // 建立 SSE 连接进行数据扫描
       const es = new EventSource(
-        `${BACK_URL}/data-mapping/data-scan?filePath=${encodeURIComponent(
+        `${BACK_URL}/data-mapping/sessions/${activeChatId}/data-scan?filePath=${encodeURIComponent(
           serverFilePath
-        )}&sessionId=${activeChatId}`
+        )}`
       );
 
       es.onmessage = (e) => {
@@ -459,7 +475,7 @@ export default function IntelligentDecision() {
                       ...t,
                       status: "success" as const,
                       title: getFinishToolTitle(payload.tool),
-                      result: {profile: payload.profile},
+                      result: payload.profile,
                     }
                   : t
               );
@@ -469,6 +485,32 @@ export default function IntelligentDecision() {
         );
 
         if (payload.type === "final") {
+          const text = payload.explanation ?? "";
+          if (!text) return;
+
+          setMessages((prev) => {
+            const lastMsg = prev[prev.length - 1];
+            // 如果最后一条已经是AI文本块，则更新它
+            if (lastMsg && lastMsg.role === "AI" && lastMsg.type === "text") {
+              return prev.map((msg, idx) =>
+                idx === prev.length - 1
+                  ? { ...msg, content: msg.content + text, started: true }
+                  : msg
+              );
+            }
+
+            // 否则新起一块AI文本消息
+            return [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: "AI",
+                content: text,
+                type: "text",
+                started: true,
+              }
+            ]
+          })
           es.close();
           return;
         }
@@ -688,8 +730,8 @@ export default function IntelligentDecision() {
 
                         {/* 渲染：AI 文本块 */}
                         {msg.content && (
-                          <div className="p-2 text-black">
-                            <p className="text-base whitespace-pre-wrap">
+                          <div className="p-2 text-black w-full">
+                            <p className="text-base whitespace-pre-wrap wrap-break-word">
                               {msg.content}
                             </p>
                           </div>
@@ -809,7 +851,7 @@ export default function IntelligentDecision() {
                                                         null,
                                                     }));
 
-                                                    handleDateScan(file, input.name);
+                                                    handleDateScan(file);
                                                   }
                                                 }}
                                               />
