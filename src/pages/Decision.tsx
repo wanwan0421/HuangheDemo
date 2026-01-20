@@ -137,6 +137,8 @@ export default function IntelligentDecision() {
               content: m.content || "",
               type: mappedTools.length > 0 ? "tool" : "text",
               tools: mappedTools,
+              profile: m.profile || null, 
+              isScanFinished: !!m.profile,
               started: true,
             };
           });
@@ -475,42 +477,36 @@ export default function IntelligentDecision() {
                       ...t,
                       status: "success" as const,
                       title: getFinishToolTitle(payload.tool),
-                      result: payload.profile,
                     }
                   : t
               );
             }
+
+            // 最终完成
+            if (payload.type === "final") {
+              const finalProfile = payload.profile;
+
+              // 更新sessionList(全局：为了切换对话后依然能找到)
+              setSessionList((prev) =>
+                prev.map((s) =>
+                  s._id === activeChatId ? { ...s, profile: finalProfile } : s
+                )
+              );
+
+              // 更新Message (局部：为了即时渲染)
+              return {
+                ...msg,
+                tools: updatedTools.map((t) => ({ ...t, status: "success" })),
+                profile: finalProfile,
+                isScanFinished: true,
+              };
+            }
+
             return { ...msg, tools: updatedTools };
           })
         );
 
         if (payload.type === "final") {
-          const text = payload.explanation ?? "";
-          if (!text) return;
-
-          setMessages((prev) => {
-            const lastMsg = prev[prev.length - 1];
-            // 如果最后一条已经是AI文本块，则更新它
-            if (lastMsg && lastMsg.role === "AI" && lastMsg.type === "text") {
-              return prev.map((msg, idx) =>
-                idx === prev.length - 1
-                  ? { ...msg, content: msg.content + text, started: true }
-                  : msg
-              );
-            }
-
-            // 否则新起一块AI文本消息
-            return [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                role: "AI",
-                content: text,
-                type: "text",
-                started: true,
-              }
-            ]
-          })
           es.close();
           return;
         }
@@ -723,7 +719,7 @@ export default function IntelligentDecision() {
                         {msg.tools?.length && (
                           <div className="self-start w-full">
                             <div className="p-2 rounded-lg shadow-lg bg-blue-100/20 border border-blue-500 md:w-[800px]">
-                              <ToolTimeline events={msg.tools} />
+                              <ToolTimeline msg={msg} />
                             </div>
                           </div>
                         )}
