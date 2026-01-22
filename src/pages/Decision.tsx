@@ -222,165 +222,104 @@ export default function IntelligentDecision() {
       )}`
     );
 
-    const handlePayload = (payload: any) => {
-      switch (payload.type) {
-        case "token": {
-          const text = payload.message ?? "";
-          if (!text) return;
-
-          setMessages((prev) => {
-            const lastMsg = prev[prev.length - 1];
-            // 如果最后一条已经是AI文本块，则更新它
-            if (lastMsg && lastMsg.role === "AI" && lastMsg.type === "text") {
-              return prev.map((msg, idx) =>
-                idx === prev.length - 1
-                  ? { ...msg, content: msg.content + text, started: true }
-                  : msg
-              );
-            }
-            // 否则新起一块AI文本消息
-            return [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                role: "AI",
-                content: text,
-                type: "text",
-                started: true,
-              },
-            ];
-          });
-          break;
-        }
-
-        // 开始检索相关指标
-        case "search_relevant_indices": {
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === toolMessageId
-                ? {
-                    ...msg,
-                    tools: [
-                      ...(msg.tools ?? []),
-                      {
-                        id: crypto.randomUUID(),
-                        kind: "search_relevant_indices",
-                        status: "running",
-                        title: "正在检索地理指标库...",
-                      },
-                    ],
-                  }
-                : msg
-            )
-          );
-          break;
-        }
-
-        // 指标检索完成以及开始检索模型
-        case "search_index_end": {
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.id !== toolMessageId) return msg;
-
-              return {
-                ...msg,
-                tools: msg.tools
-                  ?.map((t) =>
-                    t.kind === "search_relevant_indices"
-                      ? {
-                          ...t,
-                          status: "success" as const,
-                          title: "指标库检索完成",
-                          result: payload.data,
-                        }
-                      : t
-                  )
-                  .concat({
-                    id: crypto.randomUUID(),
-                    kind: "search_relevant_models",
-                    status: "running",
-                    title: "正在检索地理模型库...",
-                  }),
-              };
-            })
-          );
-          break;
-        }
-
-        // 模型检索完成以及开始读取模型详情
-        case "search_model_end": {
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.id !== toolMessageId) return msg;
-
-              return {
-                ...msg,
-                tools: msg.tools
-                  ?.map((t) =>
-                    t.kind === "search_relevant_models"
-                      ? {
-                          ...t,
-                          status: "success" as const,
-                          title: "模型库检索完成",
-                          result: payload.data,
-                        }
-                      : t
-                  )
-                  .concat({
-                    id: crypto.randomUUID(),
-                    kind: "get_model_details",
-                    status: "running",
-                    title: "正在读取模型工作流详情...",
-                  }),
-              };
-            })
-          );
-          break;
-        }
-
-        // 最终模型推荐完成
-        case "model_details_end": {
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === toolMessageId
-                ? {
-                    ...msg,
-                    tools: msg.tools?.map((t) =>
-                      t.kind === "get_model_details"
-                        ? {
-                            ...t,
-                            status: "success",
-                            title: "模型工作流详情读取完成",
-                            result: payload.data,
-                          }
-                        : t
-                    ),
-                  }
-                : msg
-            )
-          );
-
-          setReconmmendedModelName(payload.data?.name ?? "");
-          setReconmmendedModelDesc(payload.data?.description ?? "");
-          setWorkflow(payload.data?.workflow ?? []);
-          setIsRunning(false);
-          break;
-        }
-
-        case "error":
-          console.error("Agent Error:", payload.message);
-          es.close();
-          setIsRunning(false);
-          break;
-      }
-    };
-
     es.onmessage = (e: MessageEvent) => {
       if (!e.data) return;
 
       try {
         const payload = JSON.parse(e.data);
-        handlePayload(payload);
+        setMessages((prev) => {
+          // 处理文本消息
+          if (payload.type === "token") {
+            const text = payload.message ?? "";
+            if (!text) return prev;
+
+            const updatedMessages = [...prev];
+            const lastMsg = updatedMessages[updatedMessages.length - 1];
+
+            // 如果最后一条已经是AI文本块，则更新它
+            if (lastMsg && lastMsg.role === "AI" && lastMsg.type === "text") {
+              updatedMessages[updatedMessages.length - 1] = {
+                ...lastMsg,
+                content: lastMsg.content + text,
+                started: true,
+              };
+            } else {
+              // 否则新起一块AI文本消息
+              updatedMessages.push({
+                id: crypto.randomUUID(),
+                role: "AI",
+                content: text,
+                type: "text",
+                started: true,
+              });
+            }
+            return updatedMessages;
+          }
+
+          // 处理所有工具事件
+          return prev.map((msg) => {
+            if (msg.id !== toolMessageId) return msg;
+
+            let updatedTools = [...(msg.tools ?? [])];
+
+            // 工具开始运行
+            if (payload.type === "tool_call") {
+              if (!updatedTools.find((t) => t.kind === payload.tool)) {
+                updatedTools.push({
+                  id: crypto.randomUUID(),
+                  kind: payload.tool,
+                  status: "running",
+                  title: getToolTitle(payload.tool),
+                });
+              }
+            }
+
+            // 工具运行完成
+            if (payload.type === "tool_result") {
+              updatedTools = updatedTools.map((t) =>
+                t.kind === payload.tool
+                  ? {
+                      ...t,
+                      status: "success" as const,
+                      title: getFinishToolTitle(payload.tool),
+                      result: payload.data,
+                    }
+                  : t
+              );
+            }
+
+            // 模型详情推荐
+            if (payload.type === "tool_result" && payload.tool === "get_model_details") {
+              setReconmmendedModelName(payload.data?.name ?? "");
+              setReconmmendedModelDesc(payload.data?.description ?? "");
+              setWorkflow(payload.data?.workflow ?? []);
+              setIsRunning(false);
+
+              setSessionList((prev) =>
+                prev.map((s) =>
+                  s._id === currentSessionId ? 
+                  {...s,
+                  recommendedModel: {
+                    status: "success",
+                    name: payload.data?.name ?? "",
+                    md5: payload.data?.md5 ?? "",
+                    description: payload.data?.description ?? "",
+                    workflow: payload.data?.workflow ?? []
+                  }}: s)
+              );
+            }
+
+            // 最终完成
+            if (payload.type === "final") {
+              const taskSpec = payload.Task_spec;
+              console.log("Final Task Spec:", taskSpec);
+              es.close();
+            }
+
+            return { ...msg, tools: updatedTools };
+          });
+
+        });
       } catch (err) {
         console.error("Invalid SSE data:", e.data);
       }
@@ -390,6 +329,24 @@ export default function IntelligentDecision() {
       console.error("[SSE error]", err);
       es.close();
       setIsRunning(false);
+    };
+
+    const getToolTitle = (toolKind: string) => {
+      const mapping: any = {
+        search_relevant_indices: "正在检索地理指标库...",
+        search_relevant_models: "正在检索地理模型库...",
+        get_model_details: "正在读取模型工作流详情...",
+      };
+      return mapping[toolKind] || "正在处理...";
+    };
+
+    const getFinishToolTitle = (toolKind: string) => {
+      const mapping: any = {
+        search_relevant_indices: "指标库检索完成",
+        search_relevant_models: "模型库检索完成",
+        get_model_details: "模型工作流详情读取完成",
+      };
+      return mapping[toolKind] || "处理完成";
     };
   };
 
