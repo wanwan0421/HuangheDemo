@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import ModelExecuteProcess from "../components/ModelExecuteProcess";
 import ToolTimeline from "../components/ToolTimeline";
 import type { WorkflowState, Message} from "../types";
+import TaskSpecCard from "../components/TaskSpecCard";
 
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
@@ -27,13 +28,12 @@ export default function IntelligentDecision() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
 
+  // 当前任务需求
+  const [currentTaskSpec, setCurrentTaskSpec] = useState<any | null>(null);
+
   // 推荐的模型信息
-  const [reconmmendedModelName, setReconmmendedModelName] = useState<
-    string | null
-  >(null);
-  const [reconmmendedModelDesc, setReconmmendedModelDesc] = useState<
-    string | null
-  >(null);
+  const [recommendedModelName, setRecommendedModelName] = useState<string | null>(null);
+  const [recommendedModelDesc, setRecommendedModelDesc] = useState<string | null>(null);
   const [workflow, setWorkflow] = useState<WorkflowState[]>([]);
 
   // 用户上传的数据
@@ -53,12 +53,13 @@ export default function IntelligentDecision() {
   // 定义初始状态或使用重置函数
   const resetToInitialState = (keepSessionId: boolean = false) => {
     setMessages([]);
-    setReconmmendedModelName(null);
-    setReconmmendedModelDesc(null);
+    setRecommendedModelName(null);
+    setRecommendedModelDesc(null);
     setWorkflow([]);
     setUploadedData({});
     setIsRunning(false);
     dispatch({ type: "RESET" });
+    setCurrentTaskSpec(null);
 
     if (!keepSessionId) {
       setActiveChatId(null);
@@ -86,9 +87,10 @@ export default function IntelligentDecision() {
 
     const currentSession = sessionList.find((s) => s._id === activeChatId);
     if (currentSession?.recommendedModel) {
-      setReconmmendedModelName(currentSession.recommendedModel.name);
-      setReconmmendedModelDesc(currentSession.recommendedModel.description);
+      setRecommendedModelName(currentSession.recommendedModel.name);
+      setRecommendedModelDesc(currentSession.recommendedModel.description);
       setWorkflow(currentSession.recommendedModel.workflow);
+      setCurrentTaskSpec(currentSession.taskSpec || null);
     }
 
     // 调用后端获取历史消息的接口
@@ -105,11 +107,11 @@ export default function IntelligentDecision() {
                   kind: t.tool,
                   status: "success" as const,
                   title:
-                    t.type === "search_index_end"
+                    t.tool === "search_relevant_indices"
                       ? "指标库检索完成"
-                      : t.type === "search_model_end"
+                      : t.tool === "search_relevant_models"
                       ? "模型库检索完成"
-                      : t.type === "model_details_end"
+                      : t.tool === "get_model_details"
                       ? "详情读取完成"
                       : t.tool === "tool_prepare_file"
                       ? "数据准备完成"
@@ -209,11 +211,12 @@ export default function IntelligentDecision() {
     ]);
 
     // 重置状态
-    setReconmmendedModelName(null);
-    setReconmmendedModelDesc(null);
+    setRecommendedModelName(null);
+    setRecommendedModelDesc(null);
     setWorkflow([]);
     dispatch({ type: "RESET" });
     setIsRunning(false);
+    setCurrentTaskSpec(null);
 
     // 建立 SSE 连接（Node → Python → Agent）
     const es = new EventSource(
@@ -290,8 +293,8 @@ export default function IntelligentDecision() {
 
             // 模型详情推荐
             if (payload.type === "tool_result" && payload.tool === "get_model_details") {
-              setReconmmendedModelName(payload.data?.name ?? "");
-              setReconmmendedModelDesc(payload.data?.description ?? "");
+              setRecommendedModelName(payload.data?.name ?? "");
+              setRecommendedModelDesc(payload.data?.description ?? "");
               setWorkflow(payload.data?.workflow ?? []);
               setIsRunning(false);
 
@@ -309,10 +312,16 @@ export default function IntelligentDecision() {
               );
             }
 
+            if (payload.type === "task_spec_generated") {
+              const taskSpec = payload.data;
+              if (taskSpec && Object.keys(taskSpec).length > 0) {
+                setCurrentTaskSpec(payload.data);
+                console.log("Final Task Spec:", taskSpec);
+              }
+            }
+
             // 最终完成
             if (payload.type === "final") {
-              const taskSpec = payload.Task_spec;
-              console.log("Final Task Spec:", taskSpec);
               es.close();
             }
 
@@ -531,7 +540,7 @@ export default function IntelligentDecision() {
 
     // 构造基础信息
     const modelRunInfo = {
-      modelName: reconmmendedModelName,
+      modelName: recommendedModelName,
       workflow: workflow,
     };
     formData.append("info", JSON.stringify(modelRunInfo));
@@ -703,9 +712,9 @@ export default function IntelligentDecision() {
       </main>
 
       {/* ------------------------------- Right InputSlots + Result Panel ------------------------------- */}
-      {/* Now, LLM don't recommend any model —— reconmmendedModelName: false; isRunning: false */}
+      {/* Now, LLM don't recommend any model —— recommendedModelName: false; isRunning: false */}
       <AnimatePresence>
-        {reconmmendedModelName && (
+        {(recommendedModelName || currentTaskSpec) && (
           <motion.section
             initial={{ opacity: 0, x: 80 }}
             animate={{ opacity: 1, x: 0 }}
@@ -713,24 +722,30 @@ export default function IntelligentDecision() {
             transition={{ duration: 0.45, ease: "easeOut" }}
             className="flex-none w-full md:w-[35%] lg:w-[30%] min-w-[320px] max-w-[600px] flex flex-col overflow-y-auto"
           >
-            <div className="flex-1 bg-gray-100/50 rounded-lg my-5 mr-5 p-4 shadow">
+            <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+              {currentTaskSpec && (
+                <div className="mb-8">
+                  <TaskSpecCard data={currentTaskSpec} />
+                </div>
+              )}
+
               {/* Now, LLM has recommend the most suitable model, and user needs to upload data */}
-              {reconmmendedModelName && !isRunning && (
+              {recommendedModelName && !isRunning && (
                 <div className="flex-1 custom-scrollbar">
                   <div className="mb-4">
                     <div className="flex items-center space-x-2 mb-1">
                       <Sparkles size={20} className="text-blue-800" />
-                      <h3 className="text-3xl text-blue-800 font-bold">
+                      <h3 className="text-2xl text-blue-800 font-bold">
                         Model recommendation
                       </h3>
                     </div>
                     <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-blue-800 via-blue-500 to-transparent"></div>
 
-                    <p className="text-2xl text-blue-800 font-extrabold">
-                      {reconmmendedModelName}
+                    <p className="text-xl text-blue-800 font-extrabold">
+                      {recommendedModelName}
                     </p>
                     <p className="text-sm text-gray-600 mt-1">
-                      {reconmmendedModelDesc}
+                      {recommendedModelDesc}
                     </p>
                   </div>
 
@@ -795,7 +810,8 @@ export default function IntelligentDecision() {
                                                 type="file"
                                                 className="hidden"
                                                 onChange={(e) => {
-                                                  const file = e.target.files?.[0];
+                                                  const file =
+                                                    e.target.files?.[0];
                                                   if (file) {
                                                     setUploadedData((p) => ({
                                                       ...p,
@@ -850,7 +866,7 @@ export default function IntelligentDecision() {
               )}
 
               {/* Now, LLM has recommend the most suitable model, and user has uploaded data */}
-              {reconmmendedModelName && isRunning && (
+              {recommendedModelName && isRunning && (
                 <div className="space-y-3">
                   <div className="w-full flex items-center space-x-2">
                     <Activity size={20} className="text-blue-800" />
