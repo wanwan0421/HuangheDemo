@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import ChatInput from "../components/ChatInput";
-import { SquarePen, Search, Sparkles, Activity } from "lucide-react";
+import { SquarePen, Search, Sparkles, Activity, MoreVertical } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ModelExecuteProcess from "../components/ModelExecuteProcess";
 import ToolTimeline from "../components/ToolTimeline";
 import type { WorkflowState, Message} from "../types";
 import TaskSpecCard from "../components/TaskSpecCard";
+import ModelContract from "../components/ModelContract";
 
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
@@ -30,6 +31,8 @@ export default function IntelligentDecision() {
 
   // 当前任务需求
   const [currentTaskSpec, setCurrentTaskSpec] = useState<any | null>(null);
+  // 当前推荐模型要求
+  const [modelContract, setModelContract] = useState<any | null>(null);
 
   // 推荐的模型信息
   const [recommendedModelName, setRecommendedModelName] = useState<string | null>(null);
@@ -47,6 +50,7 @@ export default function IntelligentDecision() {
 
   // 设置对话列表状态
   const [sessionList, setSessionList] = useState<any[]>([]);
+  const [openSessionMenuId, setOpenSessionMenuId] = useState<string | null>(null);
   // 记录当前操作是用户从左侧列表点击切换还是发送一条消息时自动创建新对话
   const isManualSwitch = React.useRef(false);
 
@@ -60,6 +64,7 @@ export default function IntelligentDecision() {
     setIsRunning(false);
     dispatch({ type: "RESET" });
     setCurrentTaskSpec(null);
+    setModelContract(null);
 
     if (!keepSessionId) {
       setActiveChatId(null);
@@ -91,6 +96,7 @@ export default function IntelligentDecision() {
       setRecommendedModelDesc(currentSession.recommendedModel.description);
       setWorkflow(currentSession.recommendedModel.workflow);
       setCurrentTaskSpec(currentSession.taskSpec || null);
+      setModelContract(currentSession.modelContract || null);
     }
 
     // 调用后端获取历史消息的接口
@@ -167,6 +173,59 @@ export default function IntelligentDecision() {
       });
   }, []);
 
+  // 全局点击后收起会话菜单
+  React.useEffect(() => {
+    const handleClickOutside = () => setOpenSessionMenuId(null);
+    window.addEventListener("click", handleClickOutside);
+    return () => window.removeEventListener("click", handleClickOutside);
+  }, []);
+
+  // 重命名会话
+  const handleRenameSession = async (sessionId: string, currentTitle: string) => {
+    const newTitle = window.prompt("Rename session", currentTitle || "New Chat");
+    if (!newTitle || newTitle.trim() === currentTitle) return;
+
+    const title = newTitle.trim();
+    const prev = sessionList;
+    setSessionList((p) => p.map((s) => (s._id === sessionId ? { ...s, title } : s)));
+
+    try {
+      const res = await fetch(`${BACK_URL}/chat/sessions/${sessionId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error("Rename failed");
+    } catch (err) {
+      console.error("Rename session failed", err);
+      setSessionList(prev);
+    }
+  };
+
+  // 删除会话
+  const handleDeleteSession = async (sessionId: string) => {
+    const ok = window.confirm("Delete this session?");
+    if (!ok) return;
+
+    const prev = sessionList;
+    setSessionList((p) => p.filter((s) => s._id !== sessionId));
+    if (activeChatId === sessionId) {
+      resetToInitialState(false);
+    }
+
+    try {
+      const res = await fetch(`${BACK_URL}/chat/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error("Delete failed");
+    } catch (err) {
+      console.error("Delete session failed", err);
+      setSessionList(prev);
+    }
+  };
+
   const handleSendMessage = async (prompt: string) => {
     // 创建对话Id
     let currentSessionId = activeChatId;
@@ -217,6 +276,7 @@ export default function IntelligentDecision() {
     dispatch({ type: "RESET" });
     setIsRunning(false);
     setCurrentTaskSpec(null);
+    setModelContract(null);
 
     // 建立 SSE 连接（Node → Python → Agent）
     const es = new EventSource(
@@ -230,6 +290,7 @@ export default function IntelligentDecision() {
 
       try {
         const payload = JSON.parse(e.data);
+        console.log("SSE Payload:", payload);
         setMessages((prev) => {
           // 处理文本消息
           if (payload.type === "token") {
@@ -284,40 +345,12 @@ export default function IntelligentDecision() {
                   ? {
                       ...t,
                       status: "success" as const,
+                      type: 'tool',
                       title: getFinishToolTitle(payload.tool),
                       result: payload.data,
                     }
                   : t
               );
-            }
-
-            // 模型详情推荐
-            if (payload.type === "tool_result" && payload.tool === "get_model_details") {
-              setRecommendedModelName(payload.data?.name ?? "");
-              setRecommendedModelDesc(payload.data?.description ?? "");
-              setWorkflow(payload.data?.workflow ?? []);
-              setIsRunning(false);
-
-              setSessionList((prev) =>
-                prev.map((s) =>
-                  s._id === currentSessionId ? 
-                  {...s,
-                  recommendedModel: {
-                    status: "success",
-                    name: payload.data?.name ?? "",
-                    md5: payload.data?.md5 ?? "",
-                    description: payload.data?.description ?? "",
-                    workflow: payload.data?.workflow ?? []
-                  }}: s)
-              );
-            }
-
-            if (payload.type === "task_spec_generated") {
-              const taskSpec = payload.data;
-              if (taskSpec && Object.keys(taskSpec).length > 0) {
-                setCurrentTaskSpec(payload.data);
-                console.log("Final Task Spec:", taskSpec);
-              }
             }
 
             // 最终完成
@@ -329,6 +362,40 @@ export default function IntelligentDecision() {
           });
 
         });
+
+        if (payload.type === "tool_result" && payload.tool === "get_model_details") {
+          setRecommendedModelName(payload.data?.name ?? "");
+          setRecommendedModelDesc(payload.data?.description ?? "");
+          setWorkflow(payload.data?.workflow ?? []);
+          setIsRunning(false);
+
+          setSessionList((prev) =>
+            prev.map((s) =>
+              s._id === currentSessionId ? 
+              {...s,
+              recommendedModel: {
+                status: "success",
+                name: payload.data?.name ?? "",
+                md5: payload.data?.md5 ?? "",
+                description: payload.data?.description ?? "",
+                workflow: payload.data?.workflow ?? []
+              }}: s)
+          );
+        }
+
+        if (payload.type === "task_spec_generated") {
+          const taskSpec = payload.data;
+          if (taskSpec && Object.keys(taskSpec).length > 0) {
+            setCurrentTaskSpec(payload.data);
+          }
+        }
+
+        if (payload.type === "model_contract_generated") {
+          const modelContract = payload.data.Required_slots;
+          if (modelContract && modelContract.length > 0) {
+            setModelContract(payload.data);
+          }
+        }
       } catch (err) {
         console.error("Invalid SSE data:", e.data);
       }
@@ -624,30 +691,82 @@ export default function IntelligentDecision() {
         <h3 className="font-bold text-base text-gray-200 mb-2 px-2">
           Historical Records
         </h3>
-        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-          {sessionList.map((session) => (
-            <button
-              key={session._id}
-              className={`w-full text-left p-2 rounded-lg transition ${
-                activeChatId === session._id
-                  ? "bg-gray-100/50 text-white"
-                  : "hover:bg-gray-700 text-white"
-              }`}
-              onClick={() => {
-                isManualSwitch.current = true;
-                setActiveChatId(session._id);
-              }}
-            >
-              <div className="text-base truncate w-full">
-                {session.title || "新对话"}
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-800 [&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
+          {sessionList.map((session) => {
+            const isActive = activeChatId === session._id;
+            const isMenuOpen = openSessionMenuId === session._id;
+
+            return (
+              <div
+                key={session._id}
+                className={`group relative w-full flex items-center gap-2 p-2 rounded-lg transition ${
+                  isActive
+                    ? "bg-gray-100/50 text-white"
+                    : "hover:bg-gray-700 text-white"
+                }`}
+              >
+                <button
+                  className="flex-1 text-left truncate"
+                  onClick={() => {
+                    isManualSwitch.current = true;
+                    setActiveChatId(session._id);
+                    setOpenSessionMenuId(null);
+                  }}
+                >
+                  <div className="text-base truncate w-full">
+                    {session.title || "新对话"}
+                  </div>
+                </button>
+
+                <button
+                  className={`p-1 rounded hover:bg-gray-700 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity ${
+                    isMenuOpen ? "opacity-100" : ""
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenSessionMenuId((prev) =>
+                      prev === session._id ? null : session._id
+                    );
+                  }}
+                >
+                  <MoreVertical size={16} />
+                </button>
+
+                {isMenuOpen && (
+                  <div className="absolute right-2 top-11 z-10 bg-gray-900 text-sm text-white rounded-md shadow-lg border border-gray-700 min-w-[140px]">
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-gray-800"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRenameSession(
+                          session._id,
+                          session.title || "新对话"
+                        );
+                        setOpenSessionMenuId(null);
+                      }}
+                    >
+                      重命名
+                    </button>
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-gray-800 text-red-300"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteSession(session._id);
+                        setOpenSessionMenuId(null);
+                      }}
+                    >
+                      删除
+                    </button>
+                  </div>
+                )}
               </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
       </aside>
 
       {/* ------------------------------- Middle Chat Panel ------------------------------- */}
-      <main className="flex flex-1 flex-col min-w-[400px]">
+      <main className="flex flex-1 flex-col min-w-[350px]">
         <div
           ref={scrollRef}
           className="flex-1 p-6 overflow-y-auto bg-white min-h-0"
@@ -698,11 +817,19 @@ export default function IntelligentDecision() {
                             </p>
                           </div>
                         )}
+
+                        {/* 渲染：模型合约 - 紧跟AI回答 */}
+                        {modelContract && (
+                          <div className="w-full mt-4 md:w-[800px]">
+                            <ModelContract contracts={modelContract} />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
               ))}
+
               <div className="h-4" />
             </div>
           )}
@@ -720,7 +847,7 @@ export default function IntelligentDecision() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 80 }}
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className="flex-none w-full md:w-[35%] lg:w-[30%] min-w-[320px] max-w-[600px] flex flex-col overflow-y-auto"
+            className="flex-none w-full md:w-[45%] lg:w-[40%] min-w-[320px] max-w-[750px] flex flex-col overflow-y-auto"
           >
             <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
               {currentTaskSpec && (
