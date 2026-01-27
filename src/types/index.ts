@@ -40,6 +40,7 @@ export interface ToolEvent {
     kind:
     | "search_relevant_indices"
     | "search_relevant_models"
+    | "search_most_model"
     | "get_model_details"
     | "tool_prepare_file"
     | "tool_detect_format"

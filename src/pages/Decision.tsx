@@ -117,6 +117,8 @@ export default function IntelligentDecision() {
                       ? "指标库检索完成"
                       : t.tool === "search_relevant_models"
                       ? "模型库检索完成"
+                      : t.tool === "search_most_model"
+                      ? "模型推荐完成"
                       : t.tool === "get_model_details"
                       ? "详情读取完成"
                       : t.tool === "tool_prepare_file"
@@ -411,6 +413,7 @@ export default function IntelligentDecision() {
       const mapping: any = {
         search_relevant_indices: "正在检索地理指标库...",
         search_relevant_models: "正在检索地理模型库...",
+        search_most_model: "正在推荐最合适的模型...",
         get_model_details: "正在读取模型工作流详情...",
       };
       return mapping[toolKind] || "正在处理...";
@@ -420,6 +423,7 @@ export default function IntelligentDecision() {
       const mapping: any = {
         search_relevant_indices: "指标库检索完成",
         search_relevant_models: "模型库检索完成",
+        search_most_model: "模型推荐完成",
         get_model_details: "模型工作流详情读取完成",
       };
       return mapping[toolKind] || "处理完成";
@@ -817,13 +821,6 @@ export default function IntelligentDecision() {
                             </p>
                           </div>
                         )}
-
-                        {/* 渲染：模型合约 - 紧跟AI回答 */}
-                        {modelContract && (
-                          <div className="w-full mt-4 md:w-[800px]">
-                            <ModelContract contracts={modelContract} />
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -858,7 +855,7 @@ export default function IntelligentDecision() {
 
               {/* Now, LLM has recommend the most suitable model, and user needs to upload data */}
               {recommendedModelName && !isRunning && (
-                <div className="flex-1 custom-scrollbar">
+                <div className="flex-1 custom-scrollbar mb-8">
                   <div className="mb-4">
                     <div className="flex items-center space-x-2 mb-1">
                       <Sparkles size={20} className="text-blue-800" />
@@ -900,7 +897,7 @@ export default function IntelligentDecision() {
                           {state.events.map((event, eIdx) => (
                             <div
                               key={`event-${state.stateName}-${event.eventName}-${eIdx}`}
-                              className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm"
+                              className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm hover:border-blue-200 hover:shadow-md transition-all duration-200"
                             >
                               <div className="mb-2 flex items-center gap-2">
                                 <div className="w-1 h-3 bg-blue-400 rounded-full" />
@@ -989,6 +986,12 @@ export default function IntelligentDecision() {
                   >
                     Running
                   </button>
+                </div>
+              )}
+
+              {modelContract && (
+                <div className="mb-8">
+                  <ModelContract contracts={modelContract} />
                 </div>
               )}
 

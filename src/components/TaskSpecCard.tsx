@@ -29,7 +29,7 @@ const TaskSpecCard: React.FC<TaskSpecProps> = ({ data }) => {
       className="bg-white border border-blue-200 rounded-xl p-4 shadow-sm mb-3"
     >
       {/* 顶部状态栏 */}
-      <div className="flex items-center gap-2 border-b border-gray-50 mb-1">
+      <div className="flex items-center gap-2 mb-1">
         <ClipboardCheck size={20} className="text-blue-800" />
         <span className="font-bold text-2xl text-blue-800">Task requirements</span>
       </div>
