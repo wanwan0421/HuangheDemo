@@ -16,18 +16,6 @@ function ProfileField({ label, value, className = "" }: { label: string; value: 
   );
 }
 
-// 代码块展示组件
-function ProfileCodeBlock({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-2 p-4 rounded-xl bg-slate-900 border border-slate-800 col-span-2 shadow-inner">
-      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
-      <pre className="text-[13px] font-mono text-blue-300 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-60">
-        {value}
-      </pre>
-    </div>
-  );
-}
-
 // 区块标题组件
 function SectionHeader({ title, icon: Icon, colorClass = "text-blue-700" }: { title: string; icon?: any; colorClass?: string }) {
   return (
@@ -287,6 +275,11 @@ function renderDynamicFields(profile: any) {
 
 function renderFinalProfile(p: any) {
   if (!p) return null;
+  const semantic = p?.Semantic ?? {};
+  const spatial = p?.Spatial ?? {};
+  const temporal = p?.Temporal ?? null;
+  const quality = p?.Quality ?? null;
+  const confidence = typeof p?.Confidence === "number" ? p.Confidence : 0;
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xl w-full mb-4">
@@ -304,7 +297,7 @@ function renderFinalProfile(p: any) {
         </div>
         <div className="text-right">
           <div className="text-white text-[14px] font-bold px-2 py-0.5 bg-blue-400/20 rounded-full border border-white/20 tracking-wide">
-            Form | {p.Form}
+            Form | {p?.Form || "Unknown"}
           </div>
         </div>
       </div>
@@ -320,15 +313,15 @@ function renderFinalProfile(p: any) {
               <span className="font-bold text-slate-900 block mb-1.5 text-[14px] tracking-wide">
                 Abstract
               </span>
-              {p.Semantic.Abstract}
+              {semantic?.Abstract || "No abstract available."}
             </div>
-            {p.Semantic.Applications && p.Semantic.Applications.length > 0 && (
+            {Array.isArray(semantic?.Applications) && semantic.Applications.length > 0 && (
               <div className="text-black leading-relaxed text-[14px]">
                 <span className="font-bold text-slate-900 block mb-1.5 text-[14px] tracking-wide">
                   Applications
                 </span>
                 <div className="flex flex-wrap text-black">
-                  {p.Semantic.Applications.map((app: string, idx: number) => (
+                  {semantic.Applications.map((app: string, idx: number) => (
                     <span key={idx}>
                       {idx > 0 && <span className="mx-1">|</span>}
                       <span className="text-[14px]">{app}</span>
@@ -338,9 +331,9 @@ function renderFinalProfile(p: any) {
               </div>
             )}
             <div className="flex flex-wrap gap-3 pt-1">
-              {p.Semantic.Tags &&
-                p.Semantic.Tags.length > 0 &&
-                p.Semantic.Tags.map((tag: string) => (
+              {Array.isArray(semantic?.Tags) &&
+                semantic.Tags.length > 0 &&
+                semantic.Tags.map((tag: string) => (
                   <span
                     key={tag}
                     className="px-2.5 py-1 bg-slate-100 border border-slate-200 text-slate-700 text-[12px] font-bold rounded-lg shadow-sm"
@@ -370,21 +363,21 @@ function renderFinalProfile(p: any) {
                   Coordinate Reference System
                 </span>
                 <div className="text-[15px] font-bold text-blue-500 leading-tight">
-                  {p.Spatial.Crs?.Name || "Unknown Reference"}
+                  {spatial?.Crs?.Name || "Unknown Reference"}
                 </div>
                 <div className="flex gap-4 pt-1">
                   <div className="flex items-center gap-1.5 text-slate-400 text-[12px]">
                     <span className="w-1.5 h-1.5 rounded-full bg-pink-500" />
                     Datum:{" "}
                     <span className="text-slate-200 font-bold">
-                      {p.Spatial.Crs?.Datum || "N/A"}
+                      {spatial?.Crs?.Datum || "N/A"}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-400 text-[12px]">
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
                     Unit:{" "}
                     <span className="text-slate-200 font-bold">
-                      {p.Spatial.Crs?.Unit || "Unknown"}
+                      {spatial?.Crs?.Unit || "Unknown"}
                     </span>
                   </div>
                 </div>
@@ -392,13 +385,13 @@ function renderFinalProfile(p: any) {
               <div className="flex flex-col justify-start px-2 md:px-5 mt-4 md:mt-0 gap-2">
                 <span className="text-[14px] font-bold">Projection Method</span>
                 <span className="text-[15px] font-bold text-blue-500 leading-tight">
-                  {p.Spatial.Crs?.Projection || "Geographic"}
+                  {spatial?.Crs?.Projection || "Geographic"}
                 </span>
               </div>
             </div>
 
             {/* 第二组：Bounding Box (特殊的地理视觉组件) */}
-            {p.Spatial.Extent && (
+            {spatial?.Extent && (
               <div className="p-5 rounded-xl bg-white border border-slate-200 shadow-sm relative overflow-hidden group hover:border-blue-200 transition-colors">
                 <span className="text-[14px] font-black text-black tracking-wide mb-2 block">
                   Extent
@@ -407,7 +400,7 @@ function renderFinalProfile(p: any) {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-black text-[14px] pb-1">
                       <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      {p.Spatial.Extent.label_x}
+                      {spatial.Extent.label_x}
                     </div>
                     <div
                       className={
@@ -415,16 +408,16 @@ function renderFinalProfile(p: any) {
                       }
                     />
                     <div className="text-[14px] text-slate-400 tracking-tight italic">
-                      {p.Spatial.Extent.min_x?.toFixed(3)}
+                      {spatial.Extent.min_x?.toFixed(3)}
                       <span className="text-slate-500 mx-1">~</span>
-                      {p.Spatial.Extent.max_x?.toFixed(3)}{" "}
-                      {p.Spatial.Extent.unit}
+                      {spatial.Extent.max_x?.toFixed(3)}{" "}
+                      {spatial.Extent.unit}
                     </div>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-black text-[14px] pb-1">
                       <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                      {p.Spatial.Extent.label_y}
+                      {spatial.Extent.label_y}
                     </div>
                     <div
                       className={
@@ -432,10 +425,10 @@ function renderFinalProfile(p: any) {
                       }
                     />
                     <div className="text-[14px] text-slate-400 tracking-tight italic">
-                      {p.Spatial.Extent.min_y?.toFixed(3)}
+                      {spatial.Extent.min_y?.toFixed(3)}
                       <span className="text-slate-500 mx-1">~</span>
-                      {p.Spatial.Extent.max_y?.toFixed(3)}{" "}
-                      {p.Spatial.Extent.unit}
+                      {spatial.Extent.max_y?.toFixed(3)}{" "}
+                      {spatial.Extent.unit}
                     </div>
                   </div>
                 </div>
@@ -445,7 +438,7 @@ function renderFinalProfile(p: any) {
         </section>
 
         {/* 时间域 */}
-        {p.Temporal && (
+        {temporal && (
           <section>
             <SectionHeader
               title="Temporal Domain"
@@ -456,18 +449,18 @@ function renderFinalProfile(p: any) {
               <ProfileField
                 label="Timeline Status"
                 value={
-                  p.Temporal?.Has_time
+                  temporal?.Has_time
                     ? "Time-Series Enabled"
                     : "Static Snapshot"
                 }
               />
               <ProfileField
                 label="Start Time"
-                value={p.Temporal?.start_time || "N/A"}
+                value={temporal?.start_time || "N/A"}
               />
               <ProfileField
                 label="End Time"
-                value={p.Temporal?.end_time || "N/A"}
+                value={temporal?.end_time || "N/A"}
               />
             </div>
           </section>
@@ -484,10 +477,10 @@ function renderFinalProfile(p: any) {
         </section>
 
         {/* 质量哨兵 */}
-        {p.Quality && (
+        {quality && (
           <section>
             <SectionHeader
-            title="Spatial Domain"
+            title="Quality Detection"
             icon={ShieldCheck}
             colorClass="text-blue-700"
           />
@@ -498,7 +491,7 @@ function renderFinalProfile(p: any) {
               {/* 核心质量状态卡片 */}
               <div
                 className={`p-5 rounded-xl border flex flex-col md:flex-row gap-6 transition-all shadow-sm ${
-                  p.Quality.status === "healthy"
+                  quality.status === "healthy"
                     ? "bg-emerald-50/30 border-emerald-100 hover:border-emerald-200"
                     : "bg-amber-50/30 border-amber-100 hover:border-amber-200"
                 }`}
@@ -531,18 +524,18 @@ function renderFinalProfile(p: any) {
                         strokeDashoffset={
                           175 -
                           (175 *
-                            parseFloat(p.Quality.nodata_percentage || "0")) /
+                            parseFloat(quality.nodata_percentage || "0")) /
                             100
                         }
                         className={
-                          p.Quality.status === "healthy"
+                          quality.status === "healthy"
                             ? "text-emerald-500"
                             : "text-amber-500"
                         }
                       />
                     </svg>
                     <span className="absolute text-[13px] font-black text-slate-700">
-                      {p.Quality.nodata_percentage}
+                      {quality.nodata_percentage}
                     </span>
                   </div>
                 </div>
@@ -552,16 +545,16 @@ function renderFinalProfile(p: any) {
                   <div className="flex items-center gap-2">
                     <span
                       className={`text-[14px] font-black tracking-wide ${
-                        p.Quality.status === "healthy"
+                        quality.status === "healthy"
                           ? "text-emerald-700"
                           : "text-amber-700"
                       }`}
                     >
-                      {p.Quality.status === "healthy"
+                      {quality.status === "healthy"
                         ? "Data Integrity: Verified"
                         : "Anomalies Detected"}
                     </span>
-                    {p.Quality.requires_repair && (
+                    {quality.requires_repair && (
                       <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black rounded-full border border-red-200 animate-pulse">
                         REPAIR REQUIRED
                       </span>
@@ -569,8 +562,8 @@ function renderFinalProfile(p: any) {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {p.Quality.issues && p.Quality.issues.length > 0 ? (
-                      p.Quality.issues.map((issue: string, idx: number) => (
+                    {Array.isArray(quality.issues) && quality.issues.length > 0 ? (
+                      quality.issues.map((issue: string, idx: number) => (
                         <div
                           key={idx}
                           className="flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200 rounded-lg shadow-xs"
@@ -609,17 +602,21 @@ function renderFinalProfile(p: any) {
           <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
             <motion.div
               initial={{ width: 0 }}
-              animate={{ width: `${p.Confidence * 100}%` }}
+              animate={{ width: `${confidence * 100}%` }}
               className="h-full bg-blue-700 shadow-[0_0_8px_rgba(59,130,246,0.5)]"
             />
           </div>
           <span className="text-[12px] font-black text-blue-700">
-            {(p.Confidence * 100).toFixed(0)}%
+            {(confidence * 100).toFixed(0)}%
           </span>
         </div>
       </div>
     </div>
   );
+}
+
+export function FinalProfileCard({ profile }: { profile: any }) {
+  return renderFinalProfile(profile);
 }
 
 export default function ToolTimeline({ msg }: { msg: any }) {

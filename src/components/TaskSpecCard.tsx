@@ -30,8 +30,8 @@ const TaskSpecCard: React.FC<TaskSpecProps> = ({ data }) => {
     >
       {/* 顶部状态栏 */}
       <div className="flex items-center gap-2 mb-1">
-        <ClipboardCheck size={20} className="text-blue-800" />
-        <span className="font-bold text-2xl text-blue-800">Task requirements</span>
+        <ClipboardCheck size={20} className="text-blue-600" />
+        <span className="font-bold text-xl text-blue-600">Task requirements</span>
       </div>
       <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-blue-800 via-blue-500 to-transparent"></div>
 
@@ -39,11 +39,11 @@ const TaskSpecCard: React.FC<TaskSpecProps> = ({ data }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-2 gap-x-6">
         {items.map((item, idx) => (
           <div key={idx} className="flex flex-col">
-            <div className="flex items-center gap-1.5 text-blue-600 text-[14px] font-bold mb-1">
+            <div className="flex items-center gap-1.5 text-blue-500 text-[14px] font-bold mb-1">
               {item.icon}
               {item.label}
             </div>
-            <div className="text-[14px] text-black bg-gray-50 px-2.5 py-1.5 rounded-md border border-gray-100/50 h-full">
+            <div className="text-[14px] text-gray-700 bg-gray-50 px-2.5 py-1.5 rounded-md border border-gray-100/50 h-full">
               {item.value || "Unspecified"}
             </div>
           </div>

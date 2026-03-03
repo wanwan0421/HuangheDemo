@@ -5,6 +5,7 @@ import About from './pages/About';
 import Index from './pages/Index';
 import Resources from './pages/Resources';
 import Decision from './pages/Decision';
+// import Decision from './pages/Decision copy';
 
 function App() {
   return (

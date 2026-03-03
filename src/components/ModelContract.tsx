@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion";
-import {Database, Globe2, Clock, FileText, Frame, LaptopMinimalCheck, MapPin, Maximize, Combine} from "lucide-react";
+import {Frame, LaptopMinimalCheck, MapPin, Maximize, Combine, FileCode} from "lucide-react";
 
 // --- 类型定义保持不变 ---
 interface SpatialRequirement {
@@ -10,7 +10,7 @@ interface SpatialRequirement {
   crs?: string;
 }
 
-interface ModelContractItem {
+export interface ModelContractItem {
   Input_name?: string;
   slot_name?: string;
   Data_type?: string;
@@ -28,8 +28,6 @@ interface ModelContractItem {
 function isModelContractItem(value: unknown): value is ModelContractItem {
   return typeof value === "object" && value !== null;
 }
-
-// --- 紧凑的小组件 ---
 
 // 类型徽章
 function TypeBadge({ type }: { type: string }) {
@@ -161,6 +159,60 @@ function ContractCard({ contract }: { contract: ModelContractItem }) {
     </motion.div>
   );
 }
+
+// --- 悬浮气泡组件 (Tooltip) ---
+export const RequirementTooltip = ({ contract }: { contract: ModelContractItem }) => {
+  const semantic = contract.Semantic_requirement || contract.semantic_requirement;
+  const temporal = contract.Temporal_requirement || contract.temporal_requirement;
+  const format = contract.Format_requirement || contract.format_requirement;
+  
+  const spatialObj = contract.Spatial_requirement || contract.spatial_requirement;
+  const region = spatialObj?.Region || spatialObj?.region;
+  const crs = spatialObj?.Crs || spatialObj?.crs;
+
+  return (
+    <div className="w-80 p-4 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl text-white">
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-700">
+        <FileCode size={16} className="text-blue-400" />
+        <span className="font-bold text-sm">Inputdata specification</span>
+      </div>
+
+      <div className="space-y-4">
+        {/* 语义 */}
+        <div>
+          <div className="text-[10px] text-slate-400 font-bold mb-1">Semantic</div>
+          <p className="text-xs text-slate-200 leading-relaxed">{semantic || "No description provided."}</p>
+        </div>
+
+        {/* 空间与时间网格 */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <div className="text-[10px] text-slate-400 font-bold mb-1">Spatial Scope</div>
+            <div className="flex items-center gap-1 text-[11px] text-blue-300">
+              <MapPin size={10} /> {region || "N/A"}
+            </div>
+            <div className="flex items-center gap-1 text-[11px] text-blue-300">
+              <Maximize size={10} /> {crs || "N/A"}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] text-slate-400 font-bold mb-1">Temporal</div>
+            <p className="text-[11px] text-emerald-400">{temporal || "N/A"}</p>
+          </div>
+        </div>
+
+        {/* 格式 */}
+        <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
+          <div className="text-[10px] text-slate-400 font-bold mb-1">Required Format</div>
+          <code className="text-[11px] text-amber-400 font-mono">{format || "Standard"}</code>
+        </div>
+      </div>
+
+      {/* 小箭头 */}
+      <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 bg-slate-900 border-l border-t border-slate-700 -rotate-45" />
+    </div>
+  );
+};
 
 // --- 容器组件 ---
 export default function ModelContract({contracts}: { contracts: ModelContractItem[] | { Required_slots?: ModelContractItem[] } | any;}) {

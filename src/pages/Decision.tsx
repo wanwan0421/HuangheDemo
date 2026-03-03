@@ -1,12 +1,15 @@
 import React, { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import ChatInput from "../components/ChatInput";
-import { SquarePen, Search, Sparkles, Activity, MoreVertical } from "lucide-react";
+import { SquarePen, Search, Sparkles, Activity, MoreVertical, Info } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ModelExecuteProcess from "../components/ModelExecuteProcess";
 import ToolTimeline from "../components/ToolTimeline";
+import { FinalProfileCard } from "../components/ToolTimeline";
 import type { WorkflowState, Message} from "../types";
 import TaskSpecCard from "../components/TaskSpecCard";
-import ModelContract from "../components/ModelContract";
+import { RequirementTooltip, type ModelContractItem } from "../components/ModelContract";
 
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
@@ -39,10 +42,21 @@ export default function IntelligentDecision() {
   const [recommendedModelDesc, setRecommendedModelDesc] = useState<string | null>(null);
   const [workflow, setWorkflow] = useState<WorkflowState[]>([]);
 
+  // 扫描数据状态
+  const [isScanning, setIsScanning] = useState(false);
+
   // 用户上传的数据
-  const [uploadedData, setUploadedData] = useState<
-    Record<string, File | string | number | null>
-  >({});
+  const [uploadedData, setUploadedData] = useState<Record<string, File | string | number | null>>({});
+
+  // 已上传的文件列表（带元数据）
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; file: File; inputName: string }>>([]);
+  
+  // 扫描结果存储
+  const [scanResults, setScanResults] = useState<Record<string, any>>({});
+  
+  // 扫描结果模态窗口
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [selectedScanFile, setSelectedScanFile] = useState<string | null>(null);
 
   // 设置模型运行状态
   const [runStatus, dispatch] = React.useReducer(runStatusReducer, []);
@@ -430,6 +444,97 @@ export default function IntelligentDecision() {
     };
   };
 
+  // 批量扫描已上传的文件（用于模态窗口）
+  const handleBatchScan = async () => {
+    if (!activeChatId || uploadedFiles.length === 0) {
+      console.error("No session or files to scan");
+      return;
+    }
+
+    setIsScanning(true);
+
+    try {
+      // 逐个扫描每个上传的文件
+      for (let idx = 0; idx < uploadedFiles.length; idx++) {
+        const { name, file } = uploadedFiles[idx];
+        const forData = new FormData();
+        forData.append("file", file);
+        forData.append("sessionId", activeChatId);
+
+        const uploadRes = await fetch(`${BACK_URL}/data/upload`, {
+          method: "POST",
+          body: forData,
+        });
+        const uploadData = await uploadRes.json();
+
+        if (!uploadData.success) {
+          console.error(`文件 ${name} 上传失败`);
+          continue;
+        }
+
+        const serverFilePath = uploadData.filePath;
+        const fileKey = `${name}-${idx}`;
+
+        // 发起扫描请求
+        const es = new EventSource(
+          `${BACK_URL}/data-mapping/sessions/${activeChatId}/data-scan?filePath=${encodeURIComponent(
+            serverFilePath
+          )}`
+        );
+
+        // 收集该文件的扫描结果
+        let fileResult: any = {
+          tools: [],
+          profile: null,
+        };
+
+        await new Promise<void>((resolve) => {
+          es.onmessage = (e) => {
+            if (!e.data) return;
+
+            const payload = JSON.parse(e.data);
+
+            if (payload.type === "tool_call") {
+              fileResult.tools.push({
+                tool: payload.tool,
+                status: "running",
+              });
+            }
+
+            if (payload.type === "tool_result") {
+              fileResult.tools = fileResult.tools.map((t: any) =>
+                t.tool === payload.tool
+                  ? { ...t, status: "success", data: payload.data }
+                  : t
+              );
+            }
+
+            if (payload.type === "final") {
+              fileResult.profile = payload.profile;
+              es.close();
+              resolve();
+            }
+          };
+
+          es.onerror = () => {
+            es.close();
+            resolve();
+          };
+        });
+
+        // 保存结果到 scanResults
+        setScanResults((prev) => ({
+          ...prev,
+          [fileKey]: fileResult,
+        }));
+      }
+    } catch (error) {
+      console.error("Batch scan error:", error);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
   const handleDateScan = async (file: File) => {
     if (!activeChatId) {
       console.error("No active session found");
@@ -729,7 +834,7 @@ export default function IntelligentDecision() {
                   onClick={(e) => {
                     e.stopPropagation();
                     setOpenSessionMenuId((prev) =>
-                      prev === session._id ? null : session._id
+                      prev === session._id ? null : session._id,
                     );
                   }}
                 >
@@ -744,7 +849,7 @@ export default function IntelligentDecision() {
                         e.stopPropagation();
                         handleRenameSession(
                           session._id,
-                          session.title || "新对话"
+                          session.title || "新对话",
                         );
                         setOpenSessionMenuId(null);
                       }}
@@ -815,10 +920,26 @@ export default function IntelligentDecision() {
 
                         {/* 渲染：AI 文本块 */}
                         {msg.content && (
-                          <div className="p-2 text-black w-full">
-                            <p className="text-base whitespace-pre-wrap wrap-break-word">
-                              {msg.content}
-                            </p>
+                          <div className="p-4 text-black w-full">
+                            {/* 添加 prose 系列类名 */}
+                            <article
+                              className="prose prose-slate max-w-none
+                                prose-headings:font-bold
+                                prose-h2:mt-8 prose-h2:mb-4
+                                prose-h3:mt-6
+                                prose-p:text-gray-800
+                                prose-strong:text-black
+                                marker:text-black marker:font-semibold
+                                prose-table:border prose-table:rounded-xl
+                                prose-code:before:content-none prose-code:after:content-none
+                                prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
+                                prose-pre:bg-gray-100 prose-pre:p-4 prose-pre:rounded-lg prose-pre:overflow-x-auto
+                                prose-pre:text-sm prose-pre:text-gray-800"
+                            >
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {msg.content}
+                              </ReactMarkdown>
+                            </article>
                           </div>
                         )}
                       </div>
@@ -873,7 +994,7 @@ export default function IntelligentDecision() {
                     </p>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto space-y-6 mb-5">
+                  <div className="flex-1 space-y-6 mb-5">
                     {workflow.map((state, sIdx) => (
                       <div
                         key={`state-${state.stateName}-${sIdx}`}
@@ -905,11 +1026,13 @@ export default function IntelligentDecision() {
                                   {event.eventName}
                                 </h5>
                               </div>
-                              {event.eventDescription && (
-                                <p className="mb-2 text-sm text-gray-500">
-                                  {event.eventDescription}
-                                </p>
-                              )}
+                              <div>
+                                {event.eventDescription && (
+                                  <p className="w-full mb-2 text-sm leading-relaxed line-clamp-1 text-gray-500">
+                                    {event.eventDescription}
+                                  </p>
+                                )}
+                              </div>
 
                               {/* input层 */}
                               <div className="space-y-3">
@@ -918,15 +1041,42 @@ export default function IntelligentDecision() {
                                   const isFile =
                                     input.type.toUpperCase() === "FILE";
 
+                                  const specificContract = Array.isArray(
+                                    modelContract,
+                                  )
+                                    ? modelContract.find((c) => (c.Input_name || c.slot_name) === input.name )
+                                    : modelContract?.Required_slots?.find((c: ModelContractItem) => (c.Input_name || c.slot_name) === input.name );
+
                                   return (
                                     <div
                                       key={`input-${state.stateName}-${event.eventName}-${input.name}-${iIdx}`}
-                                      className="flex flex-col gap-1"
+                                      className="group relative flex flex-col gap-1 p-2 rounded-lg transition-colors border border-transparent"
                                     >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-sm font-bold text-gray-700 flex items-center gap-1">
+                                            {input.name}
+                                            <span className="relative inline-flex items-center group/info">
+                                              <Info
+                                                size={12}
+                                                className="text-gray-400 transition-colors group-hover/info:text-blue-500"
+                                              />
+                                              {specificContract && (
+                                                <div className="invisible opacity-0 group-hover/info:visible group-hover/info:opacity-100 absolute left-full top-1/2 -translate-y-1/2 ml-4 z-100 transition-all duration-200 -translate-x-2 group-hover/info:translate-x-0 group-focus-within/info:translate-x-0">
+                                                  <RequirementTooltip
+                                                    contract={specificContract}
+                                                  />
+                                                </div>
+                                              )}
+                                            </span>
+                                          </span>
+                                        </div>
+                                      </div>
                                       <div className="flex items-center gap-2">
                                         {isFile ? (
                                           <div className="flex items-center gap-2 w-full">
-                                            <label className="shrink-0 cursor-pointer flex justify-center items-center h-8 px-3 bg-gray-100 hover:bg-blue-50 text-blue-600 border border-dashed border-blue-300 rounded-md text-sm transition-all">
+                                            <label className={`shrink-0 cursor-pointer flex justify-center items-center h-8 px-3 border rounded-md text-sm transition-all
+                                              ${value ? "bg-green-50 hover:bg-green-100 text-green-600 border-green-600" : "bg-gray-100 hover:bg-blue-50 text-blue-600 border-blue-300 border-dashed"}`}>
                                               {value
                                                 ? "Reupload"
                                                 : "Select File"}
@@ -944,21 +1094,32 @@ export default function IntelligentDecision() {
                                                         null,
                                                     }));
 
-                                                    handleDateScan(file);
+                                                    // 添加到已上传文件列表
+                                                    setUploadedFiles((prev) => 
+                                                      [...prev, { name: file.name, file, inputName: input.name }]
+                                                    );
+                                                    
+                                                    // 只记录文件，不立即扫描
                                                   }
                                                 }}
                                               />
                                             </label>
-                                            <span className="text-xs truncate text-gray-400">
+                                            <span
+                                              className={`text-xs truncate transition-colors ${
+                                                value instanceof File
+                                                  ? "text-green-600 italic"
+                                                  : "text-gray-400"
+                                              }`}
+                                            >
                                               {value instanceof File
-                                                ? value.name
-                                                : "No data detected !"}
+                                                ? `"${value.name}" has been successfully uploaded!`
+                                                : "No data detected!"}
                                             </span>
                                           </div>
                                         ) : (
                                           <input
                                             className="w-full text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 transition-colors text-black"
-                                            placeholder={`${input.description}`}
+                                            placeholder={input.description}
                                             onChange={(e) =>
                                               setUploadedData((p) => ({
                                                 ...p,
@@ -980,18 +1141,23 @@ export default function IntelligentDecision() {
                   </div>
 
                   <button
+                    disabled={uploadedFiles.length === 0}
+                    onClick={() => {
+                      setSelectedScanFile(uploadedFiles.length > 0 ? `${uploadedFiles[0].name}-0` : null);
+                      setShowScanModal(true);
+                    }}
+                    className="mt-2 w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
+                  >
+                    Scanning ({uploadedFiles.length})
+                  </button>
+
+                  <button
                     disabled={!isAllInputsFilled()}
                     onClick={handleRun}
                     className="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
                   >
                     Running
                   </button>
-                </div>
-              )}
-
-              {modelContract && (
-                <div className="mb-8">
-                  <ModelContract contracts={modelContract} />
                 </div>
               )}
 
@@ -1013,6 +1179,107 @@ export default function IntelligentDecision() {
               )}
             </div>
           </motion.section>
+        )}
+      </AnimatePresence>
+      
+      {/* 扫描结果模态窗口 */}
+      <AnimatePresence>
+        {showScanModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-gray-900/40 flex items-center justify-center z-200"
+            onClick={() => setShowScanModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-blue-100/80 rounded-lg shadow-2xl max-w-6xl w-11/12 h-5/6 flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* 标题栏 */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h2 className="text-2xl font-bold text-gray-800">数据扫描结果</h2>
+                <button
+                  onClick={() => setShowScanModal(false)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* 内容区 - 两列布局：左侧文件列表预留地图，右侧扫描结果 */}
+              <div className="flex flex-1 overflow-hidden">
+                {/* 左侧：文件列表和地图预留 */}
+                <div className="w-1/3 border-r border-gray-200 p-4 overflow-y-auto">
+                  <h3 className="font-bold text-gray-700 mb-3">已上传文件</h3>
+                  <div className="space-y-2">
+                    {uploadedFiles.map((file, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedScanFile(`${file.name}-${idx}`)}
+                        className={`w-full text-left p-3 rounded-lg border transition-all ${
+                          selectedScanFile === `${file.name}-${idx}`
+                            ? 'bg-blue-50 border-blue-500'
+                            : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-medium text-gray-700 truncate">{file.name}</div>
+                        <div className="text-xs text-gray-500">{file.inputName}</div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-6 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 text-center text-gray-500">
+                    <p className="text-sm">地图预留位置</p>
+                  </div>
+                </div>
+
+                {/* 右侧：扫描结果 */}
+                <div className="flex-1 p-6 overflow-y-auto">
+                  {isScanning ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                        <p className="text-gray-600">扫描中...</p>
+                      </div>
+                    </div>
+                  ) : selectedScanFile && scanResults[selectedScanFile] ? (
+                    <div className="space-y-4">
+                      <FinalProfileCard
+                        profile={scanResults[selectedScanFile]?.profile || scanResults[selectedScanFile]}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-500">
+                      <p>选择文件查看扫描结果</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 底部按钮栏 */}
+              <div className="border-t border-gray-200 p-4 flex gap-3 justify-end">
+                <button
+                  onClick={() => {
+                    setShowScanModal(false);
+                    setScanResults({});
+                  }}
+                  className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all"
+                >
+                  关闭
+                </button>
+                <button
+                  onClick={handleBatchScan}
+                  disabled={uploadedFiles.length === 0 || isScanning}
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 transition-all"
+                >
+                  {isScanning ? "扫描中..." : "开始扫描"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
