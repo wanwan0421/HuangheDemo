@@ -83,7 +83,7 @@ export default function Layout() {
                 key={item.key}
                 to={item.to}
                 className={`text-sm font-medium whitespace-nowrap ${currentPath === item.key
-                  ? '!text-blue-500 border-b-2 border-blue-500 pb-1 font-semibold'
+                  ? 'text-blue-500! border-b-2 border-blue-500 pb-1 font-semibold'
                   : darkMode
                     ? 'text-gray-300 hover:text-white'
                     : 'text-gray-700 hover:text-black'
@@ -137,7 +137,7 @@ export default function Layout() {
                   to={item.to}
                   onClick={() => setMobileOpen(false)}
                   className={`block py-2 text-base ${currentPath === item.key
-                    ? '!text-blue-500 font-semibold'
+                    ? 'text-blue-500! font-semibold'
                     : darkMode
                       ? 'text-gray-300 hover:text-white'
                       : 'text-gray-700 hover:text-black'

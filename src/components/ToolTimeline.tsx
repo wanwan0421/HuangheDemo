@@ -19,7 +19,7 @@ function ProfileField({ label, value, className = "" }: { label: string; value: 
 // 区块标题组件
 function SectionHeader({ title, icon: Icon, colorClass = "text-blue-700" }: { title: string; icon?: any; colorClass?: string }) {
   return (
-    <div className="flex items-center gap-2 mb-4 mt-2">
+    <div className="flex items-center gap-2 mb-2 mt-2">
       <div className={`w-1 h-5 rounded-full ${colorClass.replace('text', 'bg')}`} />
       {Icon && <Icon size={16} className={colorClass} />}
       <h4 className={`text-sm font-bold text-[15px] tracking-wide ${colorClass}`}>
@@ -34,8 +34,8 @@ function SectionHeader({ title, icon: Icon, colorClass = "text-blue-700" }: { ti
 function StatBadge({ label, value }: { label: string; value: any }) {
   return (
     <div className="flex flex-col items-center justify-center py-1.5 px-1 bg-slate-200/50 rounded-lg border border-slate-300">
-      <span className="text-[12px] text-slate-400 font-bold mb-0.5">{label}</span>
-      <span className="text-[12px] text-slate-800 font-bold leading-none">{value}</span>
+      <span className="text-[13px] text-slate-400 font-bold mb-0.5">{label}</span>
+      <span className="text-[13px] text-slate-800 font-bold leading-none">{value}</span>
     </div>
   );
 }
@@ -102,13 +102,13 @@ function renderDynamicFields(profile: any) {
   const lightFields = entries.filter(([key]) => !heavyKeys.includes(key));
 
   return (
-    <div className="col-span-2 space-y-6">
+    <div className="col-span-2 space-y-3">
       {/* --- 第一层级：重型结构组件 --- */}
       {heavyFields.map(([key, value]) => {
         // A. Data Fields (Attributes)
         if (key === "Attributes" && Array.isArray(value)) {
           return (
-            <div key={key} className="space-y-3 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <div key={key} className="space-y-3 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
               <div className="flex items-center gap-2 px-1">
                 <div className="text-[14px] font-bold text-black tracking-wide">
                   Data Fields ({value.length})
@@ -122,7 +122,7 @@ function renderDynamicFields(profile: any) {
                   >
                     <div className="flex items-center mb-3 gap-2">
                       <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span className="font-bold text-slate-900 text-[14px]">
+                      <span className="font-bold text-slate-900 text-[13px]">
                         {attr.name}
                       </span>
                       <span className="text-[12px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded font-bold">
@@ -130,11 +130,11 @@ function renderDynamicFields(profile: any) {
                       </span>
                     </div>
                     <div className="flex gap-4 mb-3">
-                      <div className="text-[14px] flex gap-1">
+                      <div className="text-[13px] flex gap-1">
                         <span className="text-black">Unique:</span>
                         <span className="font-bold text-slate-400">{attr.unique_count}</span>
                       </div>
-                      <div className="text-[14px] flex gap-1">
+                      <div className="text-[13px] flex gap-1">
                         <span className="text-black">Null:</span>
                         <span
                           className={`font-bold ${
@@ -168,27 +168,27 @@ function renderDynamicFields(profile: any) {
           return (
             <div
               key={key}
-              className="grid grid-cols-1 md:grid-cols-4 p-5 rounded-xl bg-linear-to-br from-slate-900 to-slate-800 text-white shadow-lg relative overflow-hidden"
+              className="grid grid-cols-1 md:grid-cols-4 px-3 py-2 rounded-xl bg-linear-to-br from-slate-900 to-slate-800 text-white shadow-lg relative overflow-hidden"
             >
               <div className="absolute right-[-10%] bottom-[-20%] opacity-10 rotate-12">
                 <Database size={160} />
               </div>
               <div className="md:col-span-2 border-b md:border-b-0 md:border-r border-slate-100">
                 <div className="flex flex-col justify-center items-center space-y-2">
-                  <p className="text-[14px] text-white font-bold tracking-wide">
+                  <p className="text-[13px] text-white font-bold tracking-wide">
                     Geometry Entity
                   </p>
-                  <p className="text-[14px] text-blue-500 font-bold leading-none">
+                  <p className="text-[13px] text-blue-500 font-bold leading-none">
                     {geo.Type}
                   </p>
                 </div>
               </div>
               <div className="md:col-span-2">
                 <div className="flex flex-col justify-center items-center space-y-2">
-                  <p className="text-[14px] text-white font-bold tracking-wide">
+                  <p className="text-[13px] text-white font-bold tracking-wide">
                     Feature Count
                   </p>
-                  <p className="text-[14px] text-blue-500 font-bold leading-none">
+                  <p className="text-[13px] text-blue-500 font-bold leading-none">
                     {geo.Feature_count?.toLocaleString()}
                   </p>
                 </div>
@@ -201,26 +201,26 @@ function renderDynamicFields(profile: any) {
         if (key === "Resolution") {
           const res = value as any;
           return (
-            <div key={key} className="grid grid-cols-1 md:grid-cols-4 p-5 rounded-xl bg-linear-to-br from-slate-900 to-slate-800 text-white shadow-lg relative overflow-hidden">
+            <div key={key} className="grid grid-cols-1 md:grid-cols-4 px-3 py-2 rounded-xl bg-linear-to-br from-slate-900 to-slate-800 text-white shadow-lg relative overflow-hidden">
               <div className="absolute right-[-10%] bottom-[-20%] opacity-10 rotate-12">
                 <Database size={160} />
               </div>
               <div className="md:col-span-2 border-b md:border-b-0 md:border-r border-slate-100">
                 <div className="flex flex-col justify-center items-center space-y-2">
-                  <p className="text-[14px] text-white font-bold tracking-wide">
+                  <p className="text-[13px] text-white font-bold tracking-wide">
                     Resolution X
                   </p>
-                  <p className="text-[14px] text-blue-500 font-bold leading-none">
+                  <p className="text-[13px] text-blue-500 font-bold leading-none">
                     {`${Number(res.x).toFixed(4)}`}
                   </p>
                 </div>
               </div>
               <div className="md:col-span-2">
                 <div className="flex flex-col justify-center items-center space-y-2">
-                  <p className="text-[14px] text-white font-bold tracking-wide">
+                  <p className="text-[13px] text-white font-bold tracking-wide">
                     Resolution Y
                   </p>
-                  <p className="text-[14px] text-blue-500 font-bold leading-none">
+                  <p className="text-[13px] text-blue-500 font-bold leading-none">
                     {`${Number(res.y).toFixed(4)}`}
                   </p>
                 </div>
@@ -233,8 +233,8 @@ function renderDynamicFields(profile: any) {
         if (key === "Statistics" && typeof value === "object") {
           const stats = value as any;
           return (
-            <div key={key} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
+            <div key={key} className="bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
+              <div className="flex items-center gap-2 mb-2">
                 <BarChart3 size={16} className="text-blue-300" />
                 <span className="text-[14px] font-bold text-black tracking-wide">Statistics</span>
               </div>
@@ -252,16 +252,16 @@ function renderDynamicFields(profile: any) {
 
       {/* --- 第二层级：轻量元数据收纳箱 (Metadata Compactor) --- */}
       {lightFields.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex items-center text-[14px] font-black text-black gap-2 mb-4">
+        <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
+          <div className="flex items-center text-[14px] font-black text-black gap-2 mb-2">
             <Target size={16} className="text-blue-300" />
             <span className="text-[14px] font-bold text-black tracking-wide">Supplementary Metadata</span>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-y-5 gap-x-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-y-3 gap-x-8">
             {lightFields.map(([key, value]) => (
-              <div key={key} className="space-y-1">
-                <span className="text-[14px] text-slate-400 font-bold block">{key.replace(/_/g, ' ')}</span>
-                <span className="text-[14px] font-black text-slate-800 break-all leading-tight">
+              <div key={key}>
+                <span className="text-[13px] text-slate-400 font-bold block">{key.replace(/_/g, ' ')}</span>
+                <span className="text-[13px] font-black text-slate-800 break-all leading-tight">
                   {String(value)}
                 </span>
               </div>
@@ -282,9 +282,9 @@ function renderFinalProfile(p: any) {
   const confidence = typeof p?.Confidence === "number" ? p.Confidence : 0;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xl w-full mb-4">
+    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xl w-full mb-2">
       {/* 头部 */}
-      <div className="bg-slate-900 px-6 py-3 flex justify-between items-center">
+      <div className="bg-slate-900 px-4 py-2 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <div className="bg-blue-400/20 p-1.5 rounded-lg border border-blue-400/30">
             <CheckCircle2 className="text-white w-5 h-5" />
@@ -302,29 +302,31 @@ function renderFinalProfile(p: any) {
         </div>
       </div>
 
-      <div className="p-6 space-y-6 bg-slate-50/20">
+      <div className="p-4 space-y-3 bg-slate-50/20">
         {/* 语义摘要区 */}
-        <section className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-blue-200 transition-colors">
+        <section className="bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-blue-200 transition-colors">
           <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
             <FileText size={100} />
           </div>
-          <div className="relative z-10 space-y-3">
-            <div className="text-black leading-relaxed text-[14px]">
+          <div className="relative z-10 space-y-2">
+            <div className="leading-relaxed">
               <span className="font-bold text-slate-900 block mb-1.5 text-[14px] tracking-wide">
                 Abstract
               </span>
-              {semantic?.Abstract || "No abstract available."}
+              <div className="flex text-justify text-gray-800 text-[13px]">
+                {semantic?.Abstract || "No abstract available."}
+              </div>
             </div>
             {Array.isArray(semantic?.Applications) && semantic.Applications.length > 0 && (
               <div className="text-black leading-relaxed text-[14px]">
                 <span className="font-bold text-slate-900 block mb-1.5 text-[14px] tracking-wide">
                   Applications
                 </span>
-                <div className="flex flex-wrap text-black">
+                <div className="flex flex-wrap text-gray-800 text-[13px]">
                   {semantic.Applications.map((app: string, idx: number) => (
                     <span key={idx}>
                       {idx > 0 && <span className="mx-1">|</span>}
-                      <span className="text-[14px]">{app}</span>
+                      <span>{app}</span>
                     </span>
                   ))}
                 </div>
@@ -352,20 +354,20 @@ function renderFinalProfile(p: any) {
             icon={Globe2}
             colorClass="text-blue-700"
           />
-          <div className="space-y-4">
+          <div className="space-y-2">
             {/* 第一组：坐标系核心定义 (横向长条卡片) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 p-5 rounded-xl bg-linear-to-br from-slate-900 to-slate-800 text-white shadow-lg relative overflow-hidden">
+            <div className="grid grid-cols-1 md:grid-cols-7 px-4 py-2 rounded-xl bg-linear-to-br from-slate-900 to-slate-800 text-white shadow-lg relative overflow-hidden">
               <div className="absolute right-[-10%] bottom-[-20%] opacity-10 rotate-12">
                 <Globe2 size={160} />
               </div>
-              <div className="md:col-span-2 border-b md:border-b-0 md:border-r border-slate-100">
+              <div className="md:col-span-4 border-b md:border-b-0 md:border-r border-slate-100">
                 <span className="text-[14px] font-bold tracking-wide block mb-2">
                   Coordinate Reference System
                 </span>
-                <div className="text-[15px] font-bold text-blue-500 leading-tight">
+                <div className="text-[14px] font-bold text-blue-500 leading-tight">
                   {spatial?.Crs?.Name || "Unknown Reference"}
                 </div>
-                <div className="flex gap-4 pt-1">
+                <div className="flex flex-col pt-1">
                   <div className="flex items-center gap-1.5 text-slate-400 text-[12px]">
                     <span className="w-1.5 h-1.5 rounded-full bg-pink-500" />
                     Datum:{" "}
@@ -382,9 +384,9 @@ function renderFinalProfile(p: any) {
                   </div>
                 </div>
               </div>
-              <div className="flex flex-col justify-start px-2 md:px-5 mt-4 md:mt-0 gap-2">
-                <span className="text-[14px] font-bold">Projection Method</span>
-                <span className="text-[15px] font-bold text-blue-500 leading-tight">
+              <div className="md:col-span-3 flex flex-col justify-start px-3 mt-4 md:mt-0 gap-2">
+                <span className="text-[14px] font-bold justify-between">Projection Method</span>
+                <span className="text-[14px] font-bold text-blue-500 leading-tight">
                   {spatial?.Crs?.Projection || "Geographic"}
                 </span>
               </div>
@@ -392,13 +394,13 @@ function renderFinalProfile(p: any) {
 
             {/* 第二组：Bounding Box (特殊的地理视觉组件) */}
             {spatial?.Extent && (
-              <div className="p-5 rounded-xl bg-white border border-slate-200 shadow-sm relative overflow-hidden group hover:border-blue-200 transition-colors">
-                <span className="text-[14px] font-black text-black tracking-wide mb-2 block">
+              <div className="px-4 py-2 rounded-xl bg-white border border-slate-200 shadow-sm relative overflow-hidden group hover:border-blue-200 transition-colors">
+                <span className="text-[14px] font-black text-black tracking-wide block">
                   Extent
                 </span>
                 <div className="grid grid-cols-2 gap-10 relative z-10">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-black text-[14px] pb-1">
+                    <div className="flex items-center gap-2 text-black text-[13px]">
                       <span className="w-2 h-2 rounded-full bg-blue-500" />
                       {spatial.Extent.label_x}
                     </div>
@@ -407,7 +409,7 @@ function renderFinalProfile(p: any) {
                         "h-px bg-linear-to-r from-blue-500 via-blue-100 to-transparent"
                       }
                     />
-                    <div className="text-[14px] text-slate-400 tracking-tight italic">
+                    <div className="text-[12px] text-slate-400 tracking-tight italic">
                       {spatial.Extent.min_x?.toFixed(3)}
                       <span className="text-slate-500 mx-1">~</span>
                       {spatial.Extent.max_x?.toFixed(3)}{" "}
@@ -415,7 +417,7 @@ function renderFinalProfile(p: any) {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-black text-[14px] pb-1">
+                    <div className="flex items-center gap-2 text-black text-[13px]">
                       <span className="w-2 h-2 rounded-full bg-indigo-500" />
                       {spatial.Extent.label_y}
                     </div>
@@ -424,7 +426,7 @@ function renderFinalProfile(p: any) {
                         "h-px bg-linear-to-r from-indigo-500 via-indigo-100 to-transparent"
                       }
                     />
-                    <div className="text-[14px] text-slate-400 tracking-tight italic">
+                    <div className="text-[12px] text-slate-400 tracking-tight italic">
                       {spatial.Extent.min_y?.toFixed(3)}
                       <span className="text-slate-500 mx-1">~</span>
                       {spatial.Extent.max_y?.toFixed(3)}{" "}
@@ -490,7 +492,7 @@ function renderFinalProfile(p: any) {
               </div>
               {/* 核心质量状态卡片 */}
               <div
-                className={`p-5 rounded-xl border flex flex-col md:flex-row gap-6 transition-all shadow-sm ${
+                className={`px-4 py-2 rounded-xl border flex flex-col md:flex-row gap-6 transition-all shadow-sm ${
                   quality.status === "healthy"
                     ? "bg-emerald-50/30 border-emerald-100 hover:border-emerald-200"
                     : "bg-amber-50/30 border-amber-100 hover:border-amber-200"
@@ -544,7 +546,7 @@ function renderFinalProfile(p: any) {
                 <div className="flex-1 space-y-3">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-[14px] font-black tracking-wide ${
+                      className={`text-[13px] font-black tracking-wide ${
                         quality.status === "healthy"
                           ? "text-emerald-700"
                           : "text-amber-700"
@@ -592,7 +594,7 @@ function renderFinalProfile(p: any) {
 
       {/* 底部信息：置信度与脚注 */}
       <div className="bg-slate-50 px-6 py-2 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
-        <span className="text-[10px] text-slate-400 uppercase tracking-[0.2em]">
+        <span className="text-[8px] text-slate-400 uppercase tracking-[0.2em]">
           © {new Date().getFullYear()} AI ANALYSIS AGENT • NO_DATA_LEAKAGE
         </span>
         <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm">

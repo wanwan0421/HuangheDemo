@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import ChatInput from "../components/ChatInput";
-import { SquarePen, Search, Sparkles, Activity, MoreVertical, Info } from "lucide-react";
+import { Earth, SquarePen, Search, Sparkles, Activity, MoreVertical, Info } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ModelExecuteProcess from "../components/ModelExecuteProcess";
 import ToolTimeline from "../components/ToolTimeline";
@@ -10,6 +10,7 @@ import { FinalProfileCard } from "../components/ToolTimeline";
 import type { WorkflowState, Message} from "../types";
 import TaskSpecCard from "../components/TaskSpecCard";
 import { RequirementTooltip, type ModelContractItem } from "../components/ModelContract";
+import MapboxViewer from "../components/mapbox";
 
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
@@ -47,6 +48,8 @@ export default function IntelligentDecision() {
 
   // 用户上传的数据
   const [uploadedData, setUploadedData] = useState<Record<string, File | string | number | null>>({});
+  // 转换后的数据
+  const [convertedData, setConvertedData] = useState<Record<string, any>>({});
 
   // 已上传的文件列表（带元数据）
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; file: File; inputName: string }>>([]);
@@ -461,11 +464,12 @@ export default function IntelligentDecision() {
         forData.append("file", file);
         forData.append("sessionId", activeChatId);
 
-        const uploadRes = await fetch(`${BACK_URL}/data/upload`, {
+        const uploadRes = await fetch(`${BACK_URL}/data/uploadAndConvert`, {
           method: "POST",
           body: forData,
         });
         const uploadData = await uploadRes.json();
+        setConvertedData((prev) => ({ ...prev, [name]: uploadData }));
 
         if (!uploadData.success) {
           console.error(`文件 ${name} 上传失败`);
@@ -493,6 +497,7 @@ export default function IntelligentDecision() {
             if (!e.data) return;
 
             const payload = JSON.parse(e.data);
+            console.log(`File: ${name}, Received type: ${payload.type}`);
 
             if (payload.type === "tool_call") {
               fileResult.tools.push({
@@ -507,6 +512,14 @@ export default function IntelligentDecision() {
                   ? { ...t, status: "success", data: payload.data }
                   : t
               );
+            }
+
+            if (payload.type === "error") {
+              console.error(
+                `后端扫描任务报错: ${payload.message || "未知错误"}`,
+              );
+              es.close();
+              resolve();
             }
 
             if (payload.type === "final") {
@@ -527,11 +540,17 @@ export default function IntelligentDecision() {
           ...prev,
           [fileKey]: fileResult,
         }));
+        console.log("Current State:", fileKey, fileResult);
       }
     } catch (error) {
       console.error("Batch scan error:", error);
     } finally {
       setIsScanning(false);
+      // 扫描完成后，自动打开结果模态窗口并选中第一个文件
+      if (uploadedFiles.length > 0) {
+        setSelectedScanFile(`${uploadedFiles[0].name}-0`);
+        setShowScanModal(true);
+      }
     }
   };
 
@@ -1044,8 +1063,16 @@ export default function IntelligentDecision() {
                                   const specificContract = Array.isArray(
                                     modelContract,
                                   )
-                                    ? modelContract.find((c) => (c.Input_name || c.slot_name) === input.name )
-                                    : modelContract?.Required_slots?.find((c: ModelContractItem) => (c.Input_name || c.slot_name) === input.name );
+                                    ? modelContract.find(
+                                        (c) =>
+                                          (c.Input_name || c.slot_name) ===
+                                          input.name,
+                                      )
+                                    : modelContract?.Required_slots?.find(
+                                        (c: ModelContractItem) =>
+                                          (c.Input_name || c.slot_name) ===
+                                          input.name,
+                                      );
 
                                   return (
                                     <div
@@ -1075,8 +1102,10 @@ export default function IntelligentDecision() {
                                       <div className="flex items-center gap-2">
                                         {isFile ? (
                                           <div className="flex items-center gap-2 w-full">
-                                            <label className={`shrink-0 cursor-pointer flex justify-center items-center h-8 px-3 border rounded-md text-sm transition-all
-                                              ${value ? "bg-green-50 hover:bg-green-100 text-green-600 border-green-600" : "bg-gray-100 hover:bg-blue-50 text-blue-600 border-blue-300 border-dashed"}`}>
+                                            <label
+                                              className={`shrink-0 cursor-pointer flex justify-center items-center h-8 px-3 border rounded-md text-sm transition-all
+                                              ${value ? "bg-green-50 hover:bg-green-100 text-green-600 border-green-600" : "bg-gray-100 hover:bg-blue-50 text-blue-600 border-blue-300 border-dashed"}`}
+                                            >
                                               {value
                                                 ? "Reupload"
                                                 : "Select File"}
@@ -1095,10 +1124,15 @@ export default function IntelligentDecision() {
                                                     }));
 
                                                     // 添加到已上传文件列表
-                                                    setUploadedFiles((prev) => 
-                                                      [...prev, { name: file.name, file, inputName: input.name }]
-                                                    );
-                                                    
+                                                    setUploadedFiles((prev) => [
+                                                      ...prev,
+                                                      {
+                                                        name: file.name,
+                                                        file,
+                                                        inputName: input.name,
+                                                      },
+                                                    ]);
+
                                                     // 只记录文件，不立即扫描
                                                   }
                                                 }}
@@ -1141,14 +1175,13 @@ export default function IntelligentDecision() {
                   </div>
 
                   <button
-                    disabled={uploadedFiles.length === 0}
-                    onClick={() => {
-                      setSelectedScanFile(uploadedFiles.length > 0 ? `${uploadedFiles[0].name}-0` : null);
-                      setShowScanModal(true);
-                    }}
+                    disabled={uploadedFiles.length === 0 || isScanning}
+                    onClick={handleBatchScan}
                     className="mt-2 w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
                   >
-                    Scanning ({uploadedFiles.length})
+                    {isScanning
+                      ? "扫描中..."
+                      : `一键扫描 (${uploadedFiles.length})`}
                   </button>
 
                   <button
@@ -1181,7 +1214,7 @@ export default function IntelligentDecision() {
           </motion.section>
         )}
       </AnimatePresence>
-      
+
       {/* 扫描结果模态窗口 */}
       <AnimatePresence>
         {showScanModal && (
@@ -1196,15 +1229,20 @@ export default function IntelligentDecision() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-blue-100/80 rounded-lg shadow-2xl max-w-6xl w-11/12 h-5/6 flex flex-col"
+              className="bg-white rounded-lg shadow-2xl w-8/12 h-4/5 flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               {/* 标题栏 */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h2 className="text-2xl font-bold text-gray-800">数据扫描结果</h2>
+              <div className="flex items-center justify-between p-5 bg-slate-900 rounded-t-lg">
+                <div className="flex items-center gap-2">
+                  <Earth size={24} className="text-white" />
+                <h2 className="text-2xl font-bold text-white">
+                  Data scanning results
+                </h2>
+                </div>
                 <button
                   onClick={() => setShowScanModal(false)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                  className="text-white hover:text-gray-500 text-2xl"
                 >
                   ×
                 </button>
@@ -1213,49 +1251,72 @@ export default function IntelligentDecision() {
               {/* 内容区 - 两列布局：左侧文件列表预留地图，右侧扫描结果 */}
               <div className="flex flex-1 overflow-hidden">
                 {/* 左侧：文件列表和地图预留 */}
-                <div className="w-1/3 border-r border-gray-200 p-4 overflow-y-auto">
-                  <h3 className="font-bold text-gray-700 mb-3">已上传文件</h3>
-                  <div className="space-y-2">
-                    {uploadedFiles.map((file, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setSelectedScanFile(`${file.name}-${idx}`)}
-                        className={`w-full text-left p-3 rounded-lg border transition-all ${
-                          selectedScanFile === `${file.name}-${idx}`
-                            ? 'bg-blue-50 border-blue-500'
-                            : 'bg-gray-50 border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="font-medium text-gray-700 truncate">{file.name}</div>
-                        <div className="text-xs text-gray-500">{file.inputName}</div>
-                      </button>
-                    ))}
+                <div className="flex-1 min-h-0 rounded-lg overflow-hidden border border-gray-300 shadow-sm">
+                    {selectedScanFile && scanResults[selectedScanFile]?.profile ? (
+                      <MapboxViewer 
+                        geoJsonData={convertedData}
+                        fileProfile={scanResults[selectedScanFile]?.profile}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gray-50 flex items-center justify-center">
+                        <p className="text-gray-400">选择文件查看地图</p>
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-6 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 text-center text-gray-500">
-                    <p className="text-sm">地图预留位置</p>
-                  </div>
-                </div>
 
                 {/* 右侧：扫描结果 */}
-                <div className="flex-1 p-6 overflow-y-auto">
-                  {isScanning ? (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                        <p className="text-gray-600">扫描中...</p>
-                      </div>
-                    </div>
-                  ) : selectedScanFile && scanResults[selectedScanFile] ? (
-                    <div className="space-y-4">
-                      <FinalProfileCard
-                        profile={scanResults[selectedScanFile]?.profile || scanResults[selectedScanFile]}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-gray-500">
-                      <p>选择文件查看扫描结果</p>
+                <div className="w-[45%] flex flex-col">
+                  <div className="shrink-0 border-b border-gray-200">
+                    {scanResults && (
+                    <div className="flex overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar]:bg-slate-100 hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
+                      {uploadedFiles.map((file, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() =>
+                            setSelectedScanFile(`${file.name}-${idx}`)
+                          }
+                          className={`text-left px-4 py-2 transition-all ${
+                            selectedScanFile === `${file.name}-${idx}`
+                              ? "bg-slate-400"
+                              : "bg-gray-100 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className={`text-xs text-gray-500 ${
+                            selectedScanFile === `${file.name}-${idx}` 
+                              ? "text-white"
+                              : "text-gray-700"
+                          }`}>
+                            {file.name}
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   )}
+                  </div>
+
+                  <div className="flex-1 p-6 overflow-y-auto">
+                    {isScanning ? (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="text-center">
+                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                          <p className="text-gray-600">Scanning...</p>
+                        </div>
+                      </div>
+                    ) : selectedScanFile && scanResults[selectedScanFile] ? (
+                      <div className="space-y-4">
+                        <FinalProfileCard
+                          profile={
+                            scanResults[selectedScanFile]?.profile ||
+                            scanResults[selectedScanFile]
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                        <p>选择文件查看扫描结果</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1268,14 +1329,14 @@ export default function IntelligentDecision() {
                   }}
                   className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all"
                 >
-                  关闭
+                  Close
                 </button>
                 <button
                   onClick={handleBatchScan}
                   disabled={uploadedFiles.length === 0 || isScanning}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 transition-all"
+                  className="px-6 py-2 bg-slate-900 text-white rounded-lg hover:bg-blue-800 disabled:bg-gray-300 transition-all"
                 >
-                  {isScanning ? "扫描中..." : "开始扫描"}
+                  {isScanning ? "Rescanning..." : "Scanning"}
                 </button>
               </div>
             </motion.div>
