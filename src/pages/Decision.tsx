@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import ChatInput from "../components/ChatInput";
@@ -39,24 +39,32 @@ export default function IntelligentDecision() {
   const [modelContract, setModelContract] = useState<any | null>(null);
 
   // 推荐的模型信息
-  const [recommendedModelName, setRecommendedModelName] = useState<string | null>(null);
-  const [recommendedModelDesc, setRecommendedModelDesc] = useState<string | null>(null);
+  const [recommendedModelName, setRecommendedModelName] = useState<
+    string | null
+  >(null);
+  const [recommendedModelDesc, setRecommendedModelDesc] = useState<
+    string | null
+  >(null);
   const [workflow, setWorkflow] = useState<WorkflowState[]>([]);
 
   // 扫描数据状态
   const [isScanning, setIsScanning] = useState(false);
 
   // 用户上传的数据
-  const [uploadedData, setUploadedData] = useState<Record<string, File | string | number | null>>({});
+  const [uploadedData, setUploadedData] = useState<
+    Record<string, File | string | number | null>
+  >({});
   // 转换后的数据
   const [convertedData, setConvertedData] = useState<Record<string, any>>({});
 
   // 已上传的文件列表（带元数据）
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; file: File; inputName: string }>>([]);
-  
+  const [uploadedFiles, setUploadedFiles] = useState<
+    Array<{ name: string; file: File; inputName: string }>
+  >([]);
+
   // 扫描结果存储
   const [scanResults, setScanResults] = useState<Record<string, any>>({});
-  
+
   // 扫描结果模态窗口
   const [showScanModal, setShowScanModal] = useState(false);
   const [selectedScanFile, setSelectedScanFile] = useState<string | null>(null);
@@ -67,7 +75,9 @@ export default function IntelligentDecision() {
 
   // 设置对话列表状态
   const [sessionList, setSessionList] = useState<any[]>([]);
-  const [openSessionMenuId, setOpenSessionMenuId] = useState<string | null>(null);
+  const [openSessionMenuId, setOpenSessionMenuId] = useState<string | null>(
+    null,
+  );
   // 记录当前操作是用户从左侧列表点击切换还是发送一条消息时自动创建新对话
   const isManualSwitch = React.useRef(false);
 
@@ -133,26 +143,26 @@ export default function IntelligentDecision() {
                     t.tool === "search_relevant_indices"
                       ? "指标库检索完成"
                       : t.tool === "search_relevant_models"
-                      ? "模型库检索完成"
-                      : t.tool === "search_most_model"
-                      ? "模型推荐完成"
-                      : t.tool === "get_model_details"
-                      ? "详情读取完成"
-                      : t.tool === "tool_prepare_file"
-                      ? "数据准备完成"
-                      : t.tool === "tool_detect_format"
-                      ? "数据格式检测完成"
-                      : t.tool === "tool_analyze_raster"
-                      ? "栅格数据分析完成"
-                      : t.tool === "tool_analyze_vector"
-                      ? "矢量数据分析完成"
-                      : t.tool === "tool_analyze_table"
-                      ? "表格数据分析完成"
-                      : t.tool === "tool_analyze_timeseries"
-                      ? "时间序列数据分析完成"
-                      : t.tool === "tool_analyze_parameter"
-                      ? "参数数据分析完成"
-                      : "工具执行完成",
+                        ? "模型库检索完成"
+                        : t.tool === "search_most_model"
+                          ? "模型推荐完成"
+                          : t.tool === "get_model_details"
+                            ? "详情读取完成"
+                            : t.tool === "tool_prepare_file"
+                              ? "数据准备完成"
+                              : t.tool === "tool_detect_format"
+                                ? "数据格式检测完成"
+                                : t.tool === "tool_analyze_raster"
+                                  ? "栅格数据分析完成"
+                                  : t.tool === "tool_analyze_vector"
+                                    ? "矢量数据分析完成"
+                                    : t.tool === "tool_analyze_table"
+                                      ? "表格数据分析完成"
+                                      : t.tool === "tool_analyze_timeseries"
+                                        ? "时间序列数据分析完成"
+                                        : t.tool === "tool_analyze_parameter"
+                                          ? "参数数据分析完成"
+                                          : "工具执行完成",
                   result: t.data || t.profile,
                   id: crypto.randomUUID(),
                 }))
@@ -164,7 +174,7 @@ export default function IntelligentDecision() {
               content: m.content || "",
               type: mappedTools.length > 0 ? "tool" : "text",
               tools: mappedTools,
-              profile: m.profile || null, 
+              profile: m.profile || null,
               isScanFinished: !!m.profile,
               started: true,
             };
@@ -200,13 +210,21 @@ export default function IntelligentDecision() {
   }, []);
 
   // 重命名会话
-  const handleRenameSession = async (sessionId: string, currentTitle: string) => {
-    const newTitle = window.prompt("Rename session", currentTitle || "New Chat");
+  const handleRenameSession = async (
+    sessionId: string,
+    currentTitle: string,
+  ) => {
+    const newTitle = window.prompt(
+      "Rename session",
+      currentTitle || "New Chat",
+    );
     if (!newTitle || newTitle.trim() === currentTitle) return;
 
     const title = newTitle.trim();
     const prev = sessionList;
-    setSessionList((p) => p.map((s) => (s._id === sessionId ? { ...s, title } : s)));
+    setSessionList((p) =>
+      p.map((s) => (s._id === sessionId ? { ...s, title } : s)),
+    );
 
     try {
       const res = await fetch(`${BACK_URL}/chat/sessions/${sessionId}`, {
@@ -300,8 +318,8 @@ export default function IntelligentDecision() {
     // 建立 SSE 连接（Node → Python → Agent）
     const es = new EventSource(
       `${BACK_URL}/chat/sessions/${currentSessionId}/chat?query=${encodeURIComponent(
-        prompt
-      )}`
+        prompt,
+      )}`,
     );
 
     es.onmessage = (e: MessageEvent) => {
@@ -364,11 +382,11 @@ export default function IntelligentDecision() {
                   ? {
                       ...t,
                       status: "success" as const,
-                      type: 'tool',
+                      type: "tool",
                       title: getFinishToolTitle(payload.tool),
                       result: payload.data,
                     }
-                  : t
+                  : t,
               );
             }
 
@@ -379,10 +397,12 @@ export default function IntelligentDecision() {
 
             return { ...msg, tools: updatedTools };
           });
-
         });
 
-        if (payload.type === "tool_result" && payload.tool === "get_model_details") {
+        if (
+          payload.type === "tool_result" &&
+          payload.tool === "get_model_details"
+        ) {
           setRecommendedModelName(payload.data?.name ?? "");
           setRecommendedModelDesc(payload.data?.description ?? "");
           setWorkflow(payload.data?.workflow ?? []);
@@ -390,15 +410,19 @@ export default function IntelligentDecision() {
 
           setSessionList((prev) =>
             prev.map((s) =>
-              s._id === currentSessionId ? 
-              {...s,
-              recommendedModel: {
-                status: "success",
-                name: payload.data?.name ?? "",
-                md5: payload.data?.md5 ?? "",
-                description: payload.data?.description ?? "",
-                workflow: payload.data?.workflow ?? []
-              }}: s)
+              s._id === currentSessionId
+                ? {
+                    ...s,
+                    recommendedModel: {
+                      status: "success",
+                      name: payload.data?.name ?? "",
+                      md5: payload.data?.md5 ?? "",
+                      description: payload.data?.description ?? "",
+                      workflow: payload.data?.workflow ?? [],
+                    },
+                  }
+                : s,
+            ),
           );
         }
 
@@ -482,8 +506,8 @@ export default function IntelligentDecision() {
         // 发起扫描请求
         const es = new EventSource(
           `${BACK_URL}/data-mapping/sessions/${activeChatId}/data-scan?filePath=${encodeURIComponent(
-            serverFilePath
-          )}`
+            serverFilePath,
+          )}`,
         );
 
         // 收集该文件的扫描结果
@@ -510,7 +534,7 @@ export default function IntelligentDecision() {
               fileResult.tools = fileResult.tools.map((t: any) =>
                 t.tool === payload.tool
                   ? { ...t, status: "success", data: payload.data }
-                  : t
+                  : t,
               );
             }
 
@@ -554,159 +578,21 @@ export default function IntelligentDecision() {
     }
   };
 
-  const handleDateScan = async (file: File) => {
-    if (!activeChatId) {
-      console.error("No active session found");
-      return;
-    }
+  // 获取所有需要显示的数据
+  const getAllGeoJsonDataForMap = useMemo(() => {
+    const allData: any[] = [];
 
-    const toolMessageId = crypto.randomUUID();
-    const scanToolId = crypto.randomUUID();
-    let isDone = false;
-
-    // 插入到前面的messages数组中
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: toolMessageId,
-        role: "AI",
-        type: "data",
-        content: "",
-        tools: [
-          {
-            id: scanToolId,
-            kind: "tool_prepare_file",
-            status: "running",
-            title: `正在扫描数据: ${file.name}`,
-          },
-        ],
-      },
-    ]);
-
-    try {
-      // 先将文件上传到后端获取临时路径
-      const forData = new FormData();
-      forData.append("file", file);
-      forData.append("sessionId", activeChatId);
-
-      const uploadRes = await fetch(`${BACK_URL}/data/upload`, {
-        method: "POST",
-        body: forData,
-      });
-      const uploadData = await uploadRes.json();
-
-      if (!uploadData.success) throw new Error("文件上传失败");
-      const serverFilePath = uploadData.filePath;
-
-      // 建立 SSE 连接进行数据扫描
-      const es = new EventSource(
-        `${BACK_URL}/data-mapping/sessions/${activeChatId}/data-scan?filePath=${encodeURIComponent(
-          serverFilePath
-        )}`
-      );
-
-      es.onmessage = (e) => {
-        if (!e.data) return;
-
-        const payload = JSON.parse(e.data);
-        console.log("Data Scan SSE Payload:", payload);
-
-        setMessages((prev) =>
-          prev.map((msg) => {
-            if (msg.id !== toolMessageId) return msg;
-
-            let updatedTools = [...(msg.tools || [])];
-
-            // 工具开始运行
-            if (payload.type === "tool_call") {
-              // 如果是新工具，追加tools
-              if (!updatedTools.find((t) => t.kind === payload.tool)) {
-                updatedTools.push({
-                  id: crypto.randomUUID(),
-                  kind: payload.tool,
-                  status: "running",
-                  title: getToolTitle(payload.tool),
-                });
-              }
-            }
-
-            // 工具运行完成
-            if (payload.type === "tool_result") {
-              updatedTools = updatedTools.map((t) =>
-                t.kind === payload.tool
-                  ? {
-                      ...t,
-                      status: "success" as const,
-                      title: getFinishToolTitle(payload.tool),
-                    }
-                  : t
-              );
-            }
-
-            // 最终完成
-            if (payload.type === "final") {
-              const finalProfile = payload.profile;
-
-              // 更新sessionList(全局：为了切换对话后依然能找到)
-              setSessionList((prev) =>
-                prev.map((s) =>
-                  s._id === activeChatId ? { ...s, profile: finalProfile } : s
-                )
-              );
-
-              // 更新Message (局部：为了即时渲染)
-              return {
-                ...msg,
-                tools: updatedTools.map((t) => ({ ...t, status: "success" })),
-                profile: finalProfile,
-                isScanFinished: true,
-              };
-            }
-
-            return { ...msg, tools: updatedTools };
-          })
-        );
-
-        if (payload.type === "final") {
-          es.close();
-          return;
-        }
-      };
-
-      es.onerror = (err) => {
-        if (isDone) return;
-        console.error("[SSE error]", err);
-        es.close();
+    uploadedFiles.forEach((file) => {
+      if (convertedData[file.name]) {
+        allData.push({
+          name: file.name,
+          data: convertedData[file.name],
+        });
       }
+    });
 
-      const getToolTitle = (toolKind: string) => {
-        const mapping: any = {
-          tool_detect_format: "正在检测数据格式...",
-          tool_analyze_raster: "正在分析栅格数据...",
-          tool_analyze_vector: "正在分析矢量数据...",
-          tool_analyze_table: "正在分析表格数据...",
-          tool_analyze_timeseries: "正在分析时间序列数据...",
-          tool_analyze_parameter: "正在分析参数数据..."
-        };
-        return mapping[toolKind] || "正在处理数据...";
-      };
-
-      const getFinishToolTitle = (toolKind: string) => {
-        const mapping: any = {
-          tool_prepare_file: "数据扫描完成",
-          tool_detect_format: "数据格式检测完成",
-          tool_analyze_raster: "栅格数据分析完成",
-          tool_analyze_vector: "矢量数据分析完成",
-          tool_analyze_table: "表格数据分析完成",
-          tool_analyze_timeseries: "时间序列数据分析完成",
-          tool_analyze_parameter: "参数数据分析完成"
-        };
-        return mapping[toolKind];
-      };
-    } catch (error) {
-      console.error("Error scanning data file:", error);
-    }
-  };
+    return allData;
+  }, [uploadedFiles, convertedData]);
 
   // 用于检查所有输入数据是否已经填写完整
   const isAllInputsFilled = () => {
@@ -722,7 +608,7 @@ export default function IntelligentDecision() {
     return (
       allKeys.length > 0 &&
       allKeys.every(
-        (key) => uploadedData[key] !== undefined && uploadedData[key] !== null
+        (key) => uploadedData[key] !== undefined && uploadedData[key] !== null,
       )
     );
   };
@@ -1236,9 +1122,9 @@ export default function IntelligentDecision() {
               <div className="flex items-center justify-between p-5 bg-slate-900 rounded-t-lg">
                 <div className="flex items-center gap-2">
                   <Earth size={24} className="text-white" />
-                <h2 className="text-2xl font-bold text-white">
-                  Data scanning results
-                </h2>
+                  <h2 className="text-2xl font-bold text-white">
+                    Data scanning results
+                  </h2>
                 </div>
                 <button
                   onClick={() => setShowScanModal(false)}
@@ -1248,50 +1134,51 @@ export default function IntelligentDecision() {
                 </button>
               </div>
 
-              {/* 内容区 - 两列布局：左侧文件列表预留地图，右侧扫描结果 */}
+              {/* 内容区 */}
               <div className="flex flex-1 overflow-hidden">
-                {/* 左侧：文件列表和地图预留 */}
+                {/* 左侧：地图数据显示 */}
                 <div className="flex-1 min-h-0 rounded-lg overflow-hidden border border-gray-300 shadow-sm">
-                    {selectedScanFile && scanResults[selectedScanFile]?.profile ? (
-                      <MapboxViewer 
-                        geoJsonData={convertedData}
-                        fileProfile={scanResults[selectedScanFile]?.profile}
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gray-50 flex items-center justify-center">
-                        <p className="text-gray-400">选择文件查看地图</p>
-                      </div>
-                    )}
-                  </div>
+                  {uploadedFiles.length > 0 && getAllGeoJsonDataForMap.length > 0 ? (
+                    <MapboxViewer
+                      geoJsonDataArray={getAllGeoJsonDataForMap}
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-50 flex items-center justify-center">
+                      <p className="text-gray-400">上传文件后在此显示地图</p>
+                    </div>
+                  )}
+                </div>
 
                 {/* 右侧：扫描结果 */}
                 <div className="w-[45%] flex flex-col">
                   <div className="shrink-0 border-b border-gray-200">
                     {scanResults && (
-                    <div className="flex overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar]:bg-slate-100 hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
-                      {uploadedFiles.map((file, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() =>
-                            setSelectedScanFile(`${file.name}-${idx}`)
-                          }
-                          className={`text-left px-4 py-2 transition-all ${
-                            selectedScanFile === `${file.name}-${idx}`
-                              ? "bg-slate-400"
-                              : "bg-gray-100 hover:border-gray-300"
-                          }`}
-                        >
-                          <div className={`text-xs text-gray-500 ${
-                            selectedScanFile === `${file.name}-${idx}` 
-                              ? "text-white"
-                              : "text-gray-700"
-                          }`}>
-                            {file.name}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                      <div className="flex overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar]:bg-slate-100 hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
+                        {uploadedFiles.map((file, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() =>
+                              setSelectedScanFile(`${file.name}-${idx}`)
+                            }
+                            className={`text-left px-4 py-2 transition-all ${
+                              selectedScanFile === `${file.name}-${idx}`
+                                ? "bg-slate-400"
+                                : "bg-gray-100 hover:border-gray-300"
+                            }`}
+                          >
+                            <div
+                              className={`text-xs text-gray-500 ${
+                                selectedScanFile === `${file.name}-${idx}`
+                                  ? "text-white"
+                                  : "text-gray-700"
+                              }`}
+                            >
+                              {file.name}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex-1 p-6 overflow-y-auto">
