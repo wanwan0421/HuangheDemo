@@ -242,8 +242,7 @@ export default function MapboxViewer({ geoJsonDataArray }: MapboxViewerProps) {
 
     if (fileData.conversion.type === "raster" && fileData.conversion.has_png) {
       // png路径
-      const BACK_URL = import.meta.env.BACK_URL || "http://localhost:3000";
-      const imageUrl = `${BACK_URL}${fileData.fileUrl.replace(/\.(tif|tiff|geotiff)$/i, ".png")}`;
+      const imageUrl = `${fileData.fileUrl.replace(/\.(tif|tiff|geotiff)$/i, ".png")}`;
 
       // 精准坐标
       const [minX, minY, maxX, maxY] = fileData.conversion.metadata.bounds;

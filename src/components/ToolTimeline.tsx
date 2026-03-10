@@ -458,11 +458,11 @@ function renderFinalProfile(p: any) {
               />
               <ProfileField
                 label="Start Time"
-                value={temporal?.start_time || "N/A"}
+                value={temporal?.Start_time || "N/A"}
               />
               <ProfileField
                 label="End Time"
-                value={temporal?.end_time || "N/A"}
+                value={temporal?.End_time || "N/A"}
               />
             </div>
           </section>

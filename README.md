@@ -668,12 +668,10 @@ npm run lint:fix
 ## 👥 团队
 
 **开发团队**：
-- 郑州大学国家超级计算中心
-- 南京师范大学
+- 南京师范大学OpenGMS
 
 **联系方式**：
-- 📧 Email: your-email@example.com
-- 🌐 Website: http://nscc.zzu.edu.cn/
+- 📧 Email: wanhao.li@nnu.edu.cn
 
 ---
 

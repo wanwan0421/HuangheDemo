@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import ChatInput from "../components/ChatInput";
@@ -39,28 +39,20 @@ export default function IntelligentDecision() {
   const [modelContract, setModelContract] = useState<any | null>(null);
 
   // 推荐的模型信息
-  const [recommendedModelName, setRecommendedModelName] = useState<
-    string | null
-  >(null);
-  const [recommendedModelDesc, setRecommendedModelDesc] = useState<
-    string | null
-  >(null);
+  const [recommendedModelName, setRecommendedModelName] = useState<string | null>(null);
+  const [recommendedModelDesc, setRecommendedModelDesc] = useState<string | null>(null);
   const [workflow, setWorkflow] = useState<WorkflowState[]>([]);
 
   // 扫描数据状态
   const [isScanning, setIsScanning] = useState(false);
 
   // 用户上传的数据
-  const [uploadedData, setUploadedData] = useState<
-    Record<string, File | string | number | null>
-  >({});
+  const [uploadedData, setUploadedData] = useState<Record<string, File | string | number | null>>({});
   // 转换后的数据
   const [convertedData, setConvertedData] = useState<Record<string, any>>({});
 
   // 已上传的文件列表（带元数据）
-  const [uploadedFiles, setUploadedFiles] = useState<
-    Array<{ name: string; file: File; inputName: string }>
-  >([]);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; file: File; inputName: string }>>([]);
 
   // 扫描结果存储
   const [scanResults, setScanResults] = useState<Record<string, any>>({});
@@ -75,9 +67,7 @@ export default function IntelligentDecision() {
 
   // 设置对话列表状态
   const [sessionList, setSessionList] = useState<any[]>([]);
-  const [openSessionMenuId, setOpenSessionMenuId] = useState<string | null>(
-    null,
-  );
+  const [openSessionMenuId, setOpenSessionMenuId] = useState<string | null>(null,);
   // 记录当前操作是用户从左侧列表点击切换还是发送一条消息时自动创建新对话
   const isManualSwitch = React.useRef(false);
 
@@ -578,6 +568,55 @@ export default function IntelligentDecision() {
     }
   };
 
+  // 对齐功能：调用后端align-session
+  const handleAlign = async () => {
+    if (!activeChatId) {
+      console.error("No session to align");
+      return;
+    }
+
+    try {
+      // 调用POST接口
+      const alignResponse = await fetch(
+        `${BACK_URL}/chat/sessions/${activeChatId}/align`,
+        {
+          method: "POST"
+        }
+      );
+
+      if (!alignResponse.ok) {
+        throw new Error(`Align failed with status ${alignResponse.status}`);
+      }
+
+      const alignData = await alignResponse.json();
+      console.log("✅ Align response:", alignData);
+    } catch (error) {
+      alert(`对齐失败: ${error instanceof Error ? error.message : "未知错误"}`);
+    }
+  };
+
+  // 更新当前模型输入数据
+  const handleInputChange = async(name: string, value: string) => {
+    const updates = {
+      [`context.${name}`]: value,
+    };
+    // 调用GET接口读取持久化字段，刷新前端状态
+      const sessionResponse = await fetch(
+        `${BACK_URL}/chat/sessions/${activeChatId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updates),
+        }
+      );
+
+      if (!sessionResponse.ok) {
+        throw new Error(`Fetch session failed with status ${sessionResponse.status}`);
+      }
+
+      const sessionData = await sessionResponse.json();
+      console.log("✅ Updated session data:", sessionData);
+  }
+
   // 获取所有需要显示的数据
   const getAllGeoJsonDataForMap = useMemo(() => {
     const allData: any[] = [];
@@ -1018,8 +1057,6 @@ export default function IntelligentDecision() {
                                                         inputName: input.name,
                                                       },
                                                     ]);
-
-                                                    // 只记录文件，不立即扫描
                                                   }
                                                 }}
                                               />
@@ -1040,12 +1077,18 @@ export default function IntelligentDecision() {
                                           <input
                                             className="w-full text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 transition-colors text-black"
                                             placeholder={input.description}
-                                            onChange={(e) =>
-                                              setUploadedData((p) => ({
-                                                ...p,
-                                                [input.name]: e.target.value,
-                                              }))
-                                            }
+                                            onBlur={(e) => {
+                                              if (e.target.value) {
+                                                setUploadedData((p) => ({
+                                                  ...p,
+                                                  [input.name]: e.target.value,
+                                                }));
+                                                handleInputChange(
+                                                  input.name,
+                                                  e.target.value,
+                                                );
+                                              }
+                                            }}
                                           />
                                         )}
                                       </div>
@@ -1060,23 +1103,36 @@ export default function IntelligentDecision() {
                     ))}
                   </div>
 
-                  <button
-                    disabled={uploadedFiles.length === 0 || isScanning}
-                    onClick={handleBatchScan}
-                    className="mt-2 w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
-                  >
-                    {isScanning
-                      ? "扫描中..."
-                      : `一键扫描 (${uploadedFiles.length})`}
-                  </button>
+                  <div className="space-y-2 mt-2">
+                    {/* 扫描按钮 */}
+                    <button
+                      disabled={uploadedFiles.length === 0 || isScanning}
+                      onClick={handleBatchScan}
+                      className="w-full py-3 bg-amber-300 hover:bg-amber-500 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
+                    >
+                      {isScanning
+                        ? "Scanning..."
+                        : `Scan (${uploadedFiles.length})`}
+                    </button>
 
-                  <button
-                    disabled={!isAllInputsFilled()}
-                    onClick={handleRun}
-                    className="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
-                  >
-                    Running
-                  </button>
+                    {/* 对齐按钮 */}
+                    <button
+                      disabled={!activeChatId || uploadedFiles.length === 0}
+                      onClick={handleAlign}
+                      className="w-full py-3 bg-purple-300 hover:bg-purple-500 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
+                      title="调用后端对齐功能，自动匹配数据与模型要求"
+                    >
+                      <span>Align</span>
+                    </button>
+
+                    <button
+                      disabled={!isAllInputsFilled()}
+                      onClick={handleRun}
+                      className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
+                    >
+                      Running
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1144,7 +1200,7 @@ export default function IntelligentDecision() {
                     />
                   ) : (
                     <div className="w-full h-full bg-gray-50 flex items-center justify-center">
-                      <p className="text-gray-400">上传文件后在此显示地图</p>
+                      <p className="text-gray-400">Display the map here after uploading the file.</p>
                     </div>
                   )}
                 </div>
@@ -1200,7 +1256,7 @@ export default function IntelligentDecision() {
                       </div>
                     ) : (
                       <div className="flex items-center justify-center h-full text-gray-500">
-                        <p>选择文件查看扫描结果</p>
+                        <p>Select a file to view scan results</p>
                       </div>
                     )}
                   </div>
@@ -1223,7 +1279,7 @@ export default function IntelligentDecision() {
                   disabled={uploadedFiles.length === 0 || isScanning}
                   className="px-6 py-2 bg-slate-900 text-white rounded-lg hover:bg-blue-800 disabled:bg-gray-300 transition-all"
                 >
-                  {isScanning ? "Rescanning..." : "Scanning"}
+                  {isScanning ? "Rescan..." : "Scan"}
                 </button>
               </div>
             </motion.div>
