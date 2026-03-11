@@ -2,20 +2,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, CheckCircle2, XCircle, FileText, Database, Globe2, Clock, BarChart3, Target, ShieldCheck, AlertTriangle } from "lucide-react";
 import type { ToolEvent } from "../types";
 
-// 字段展示组件
-function ProfileField({ label, value, className = "" }: { label: string; value: React.ReactNode; className?: string }) {
-  return (
-    <div className={`flex flex-col gap-1.5 p-3 rounded-xl bg-slate-50/50 border border-slate-100 hover:border-blue-200 hover:bg-white transition-all duration-200 ${className}`}>
-      <span className="text-[14px] font-bold text-slate-400 tracking-wide leading-none">
-        {label.replace(/_/g, ' ')}
-      </span>
-      <div className="text-[14px] text-black font-semibold break-all">
-        {value}
-      </div>
-    </div>
-  );
-}
-
 // 区块标题组件
 function SectionHeader({ title, icon: Icon, colorClass = "text-blue-700" }: { title: string; icon?: any; colorClass?: string }) {
   return (
@@ -90,7 +76,7 @@ function renderResult(e: ToolEvent) {
 }
 
 function renderDynamicFields(profile: any) {
-  const commonKeys = ['Form', 'Spatial', 'Temporal', 'file_path', 'file_type', 'primary_file', 'Confidence', 'status', 'Semantic', "Quality"];
+  const commonKeys = ['Form', 'Spatial', 'Temporal', 'file_path', 'file_type', 'primary_file', 'Confidence', 'status', 'Semantic', "Quality", "primary_file", "data_sources", "Validation"];
   
   const entries = Object.entries(profile).filter(
     ([key, value]) => !commonKeys.includes(key) && value !== null
@@ -201,26 +187,23 @@ function renderDynamicFields(profile: any) {
         if (key === "Resolution") {
           const res = value as any;
           return (
-            <div key={key} className="grid grid-cols-1 md:grid-cols-4 px-3 py-2 rounded-xl bg-linear-to-br from-slate-900 to-slate-800 text-white shadow-lg relative overflow-hidden">
-              <div className="absolute right-[-10%] bottom-[-20%] opacity-10 rotate-12">
-                <Database size={160} />
-              </div>
-              <div className="md:col-span-2 border-b md:border-b-0 md:border-r border-slate-100">
+            <div key={key} className="grid grid-cols-1 md:grid-cols-4 px-3 py-2 border border-slate-200 rounded-xl text-black shadow-sm">
+              <div className="md:col-span-2 border-b md:border-b-0 md:border-r border-slate-900">
                 <div className="flex flex-col justify-center items-center space-y-2">
-                  <p className="text-[13px] text-white font-bold tracking-wide">
+                  <p className="text-[13px] text-slate-400 font-bold tracking-wide">
                     Resolution X
                   </p>
-                  <p className="text-[13px] text-blue-500 font-bold leading-none">
+                  <p className="text-[13px] text-slate-800 font-bold leading-none">
                     {`${Number(res.x).toFixed(4)}`}
                   </p>
                 </div>
               </div>
               <div className="md:col-span-2">
                 <div className="flex flex-col justify-center items-center space-y-2">
-                  <p className="text-[13px] text-white font-bold tracking-wide">
+                  <p className="text-[13px] text-slate-400 font-bold tracking-wide">
                     Resolution Y
                   </p>
-                  <p className="text-[13px] text-blue-500 font-bold leading-none">
+                  <p className="text-[13px] text-slate-800 font-bold leading-none">
                     {`${Number(res.y).toFixed(4)}`}
                   </p>
                 </div>
@@ -445,25 +428,36 @@ function renderFinalProfile(p: any) {
             <SectionHeader
               title="Temporal Domain"
               icon={Clock}
-              colorClass="text-indigo-600"
+              colorClass="text-blue-700"
             />
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <ProfileField
-                label="Timeline Status"
-                value={
-                  temporal?.Has_time
-                    ? "Time-Series Enabled"
-                    : "Static Snapshot"
-                }
-              />
-              <ProfileField
-                label="Start Time"
-                value={temporal?.Start_time || "N/A"}
-              />
-              <ProfileField
-                label="End Time"
-                value={temporal?.End_time || "N/A"}
-              />
+            <div className="grid grid-cols-1 md:grid-cols-7 px-4 py-2 rounded-xl bg-linear-to-br from-slate-900 to-slate-800 text-white shadow-lg relative overflow-hidden">
+              <div className="absolute right-[-10%] bottom-[-20%] opacity-10 rotate-12">
+                <Globe2 size={160} />
+              </div>
+              <div className="md:col-span-3 md:border-r border-slate-100">
+                <span className="text-[14px] font-bold tracking-wide block mb-2">
+                  Timeline Status
+                </span>
+                <div className="text-[14px] font-bold text-blue-500 leading-tight">
+                  {
+                    temporal?.Has_time
+                      ? "Time-Series Enabled"
+                      : "Static Snapshot"
+                  }
+                </div>
+              </div>
+              <div className="md:col-span-2 flex flex-col px-3 md:border-r border-slate-100">
+                <span className="text-[14px] font-bold tracking-wide block mb-2">Start Time</span>
+                <span className="text-[14px] font-bold text-blue-500 leading-tight">
+                  {temporal?.Start_time || "N/A"}
+                </span>
+              </div>
+              <div className="md:col-span-2 flex flex-col px-3">
+                <span className="text-[14px] font-bold tracking-wide block mb-2">End Time</span>
+                <span className="text-[14px] font-bold text-blue-500 leading-tight">
+                  {temporal?.End_time || "N/A"}
+                </span>
+              </div>
             </div>
           </section>
         )}

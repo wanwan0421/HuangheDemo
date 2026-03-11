@@ -60,6 +60,7 @@ export default function IntelligentDecision() {
   // 扫描结果模态窗口
   const [showScanModal, setShowScanModal] = useState(false);
   const [selectedScanFile, setSelectedScanFile] = useState<string | null>(null);
+  const [isAligning, setIsAligning] = useState(false);
 
   // 设置模型运行状态
   const [runStatus, dispatch] = React.useReducer(runStatusReducer, []);
@@ -491,13 +492,16 @@ export default function IntelligentDecision() {
         }
 
         const serverFilePath = uploadData.filePath;
+        const slotKey = uploadedFiles[idx].inputName;
         const fileKey = `${name}-${idx}`;
+        const params = new URLSearchParams({
+          filePath: serverFilePath,
+          slotKey: slotKey
+        });
 
         // 发起扫描请求
         const es = new EventSource(
-          `${BACK_URL}/data-mapping/sessions/${activeChatId}/data-scan?filePath=${encodeURIComponent(
-            serverFilePath,
-          )}`,
+          `${BACK_URL}/data-mapping/sessions/${activeChatId}/data-scan?${params.toString()}`,
         );
 
         // 收集该文件的扫描结果
@@ -575,13 +579,12 @@ export default function IntelligentDecision() {
       return;
     }
 
+    setIsAligning(true);
     try {
       // 调用POST接口
       const alignResponse = await fetch(
         `${BACK_URL}/chat/sessions/${activeChatId}/align`,
-        {
-          method: "POST"
-        }
+        { method: "POST" }
       );
 
       if (!alignResponse.ok) {
@@ -592,6 +595,8 @@ export default function IntelligentDecision() {
       console.log("✅ Align response:", alignData);
     } catch (error) {
       alert(`对齐失败: ${error instanceof Error ? error.message : "未知错误"}`);
+    } finally {
+      setIsAligning(false);
     }
   };
 
@@ -1076,7 +1081,7 @@ export default function IntelligentDecision() {
                                         ) : (
                                           <input
                                             className="w-full text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 transition-colors text-black"
-                                            placeholder={input.description}
+                                            placeholder="Please enter the input data..."
                                             onBlur={(e) => {
                                               if (e.target.value) {
                                                 setUploadedData((p) => ({
@@ -1113,16 +1118,6 @@ export default function IntelligentDecision() {
                       {isScanning
                         ? "Scanning..."
                         : `Scan (${uploadedFiles.length})`}
-                    </button>
-
-                    {/* 对齐按钮 */}
-                    <button
-                      disabled={!activeChatId || uploadedFiles.length === 0}
-                      onClick={handleAlign}
-                      className="w-full py-3 bg-purple-300 hover:bg-purple-500 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
-                      title="调用后端对齐功能，自动匹配数据与模型要求"
-                    >
-                      <span>Align</span>
                     </button>
 
                     <button
@@ -1275,11 +1270,12 @@ export default function IntelligentDecision() {
                   Close
                 </button>
                 <button
-                  onClick={handleBatchScan}
-                  disabled={uploadedFiles.length === 0 || isScanning}
+                  onClick={handleAlign}
+                  disabled={!activeChatId || isAligning || isScanning}
+                  title="对齐数据与模型要求"
                   className="px-6 py-2 bg-slate-900 text-white rounded-lg hover:bg-blue-800 disabled:bg-gray-300 transition-all"
                 >
-                  {isScanning ? "Rescan..." : "Scan"}
+                  {isAligning ? "Aligning..." : "Align"}
                 </button>
               </div>
             </motion.div>
