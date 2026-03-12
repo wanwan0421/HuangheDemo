@@ -61,6 +61,17 @@ export default function IntelligentDecision() {
   const [showScanModal, setShowScanModal] = useState(false);
   const [selectedScanFile, setSelectedScanFile] = useState<string | null>(null);
   const [isAligning, setIsAligning] = useState(false);
+  const [alignmentResult, setAlignmentResult] = useState<any | null>(null);
+
+  const isNoGoAlignment =
+    !!alignmentResult &&
+    (
+      alignmentResult.go_no_go === "no-go" ||
+      alignmentResult.alignment_status === "mismatch" ||
+      alignmentResult.can_run_now === false ||
+      (Array.isArray(alignmentResult.blocking_issues) &&
+        alignmentResult.blocking_issues.length > 0)
+    );
 
   // 设置模型运行状态
   const [runStatus, dispatch] = React.useReducer(runStatusReducer, []);
@@ -83,6 +94,7 @@ export default function IntelligentDecision() {
     dispatch({ type: "RESET" });
     setCurrentTaskSpec(null);
     setModelContract(null);
+    setAlignmentResult(null);
 
     if (!keepSessionId) {
       setActiveChatId(null);
@@ -470,6 +482,7 @@ export default function IntelligentDecision() {
     }
 
     setIsScanning(true);
+    setAlignmentResult(null);
 
     try {
       // 逐个扫描每个上传的文件
@@ -515,7 +528,6 @@ export default function IntelligentDecision() {
             if (!e.data) return;
 
             const payload = JSON.parse(e.data);
-            console.log(`File: ${name}, Received type: ${payload.type}`);
 
             if (payload.type === "tool_call") {
               fileResult.tools.push({
@@ -558,7 +570,6 @@ export default function IntelligentDecision() {
           ...prev,
           [fileKey]: fileResult,
         }));
-        console.log("Current State:", fileKey, fileResult);
       }
     } catch (error) {
       console.error("Batch scan error:", error);
@@ -592,12 +603,52 @@ export default function IntelligentDecision() {
       }
 
       const alignData = await alignResponse.json();
-      console.log("✅ Align response:", alignData);
+
+      const normalizeDecision = (value: any): "go" | "no-go" | undefined => {
+        if (typeof value !== "string") return undefined;
+        const normalized = value.trim().toLowerCase().replace(/[_\s]+/g, "-");
+        if (["no-go", "nogo", "mismatch", "blocked", "block", "fail", "failed"].includes(normalized)) {
+          return "no-go";
+        }
+        if (["go", "ok", "pass", "match", "partial"].includes(normalized)) {
+          return "go";
+        }
+        return undefined;
+      };
+
+      const alignment_result = alignData.data?.alignment_result;
+
+      const hasBlockingIssues =
+        Array.isArray(alignment_result.blocking_issues) &&
+        alignment_result.blocking_issues.length > 0;
+
+      const decisionFromFlags =
+        hasBlockingIssues ||
+        alignment_result.can_run_now === false ||
+        normalizeDecision(alignment_result.alignment_status) === "no-go";
+
+      const normalizedDecision =
+        normalizeDecision(alignment_result.go_no_go) ??
+        (decisionFromFlags ? "no-go" : "go");
+
+      if (normalizedDecision === "no-go") {
+        alignment_result.go_no_go = "no-go";
+        alignment_result.can_run_now = false;
+      } else {
+        alignment_result.go_no_go = "go";
+      }
+      console.log("✅ Normalized alignment result:", alignment_result);
+
+      setAlignmentResult(alignment_result);
     } catch (error) {
       alert(`对齐失败: ${error instanceof Error ? error.message : "未知错误"}`);
     } finally {
       setIsAligning(false);
     }
+  };
+
+  const handleMapping = () => {
+    alert("当前为占位按钮：后续将在这里接入后端映射接口，将用户数据转换为模型需求数据。");
   };
 
   // 更新当前模型输入数据
@@ -618,8 +669,7 @@ export default function IntelligentDecision() {
         throw new Error(`Fetch session failed with status ${sessionResponse.status}`);
       }
 
-      const sessionData = await sessionResponse.json();
-      console.log("✅ Updated session data:", sessionData);
+      await sessionResponse.json();
   }
 
   // 获取所有需要显示的数据
@@ -657,7 +707,7 @@ export default function IntelligentDecision() {
     );
   };
 
-  // User clik running button
+  // 运行模型：构造FormData并调用后端接口，同时启动一个定时器模拟模型执行过程中的步骤更新
   const handleRun = async () => {
     setIsRunning(true);
     dispatch({ type: "RESET" });
@@ -1125,7 +1175,7 @@ export default function IntelligentDecision() {
                       onClick={handleRun}
                       className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
                     >
-                      Running
+                      Run
                     </button>
                   </div>
                 </div>
@@ -1189,13 +1239,14 @@ export default function IntelligentDecision() {
               <div className="flex flex-1 overflow-hidden">
                 {/* 左侧：地图数据显示 */}
                 <div className="flex-1 min-h-0 rounded-lg overflow-hidden border border-gray-300 shadow-sm">
-                  {uploadedFiles.length > 0 && getAllGeoJsonDataForMap.length > 0 ? (
-                    <MapboxViewer
-                      geoJsonDataArray={getAllGeoJsonDataForMap}
-                    />
+                  {uploadedFiles.length > 0 &&
+                  getAllGeoJsonDataForMap.length > 0 ? (
+                    <MapboxViewer geoJsonDataArray={getAllGeoJsonDataForMap} />
                   ) : (
                     <div className="w-full h-full bg-gray-50 flex items-center justify-center">
-                      <p className="text-gray-400">Display the map here after uploading the file.</p>
+                      <p className="text-gray-400">
+                        Display the map here after uploading the file.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1258,25 +1309,125 @@ export default function IntelligentDecision() {
                 </div>
               </div>
 
-              {/* 底部按钮栏 */}
-              <div className="border-t border-gray-200 p-4 flex gap-3 justify-end">
-                <button
-                  onClick={() => {
-                    setShowScanModal(false);
-                    setScanResults({});
-                  }}
-                  className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleAlign}
-                  disabled={!activeChatId || isAligning || isScanning}
-                  title="对齐数据与模型要求"
-                  className="px-6 py-2 bg-slate-900 text-white rounded-lg hover:bg-blue-800 disabled:bg-gray-300 transition-all"
-                >
-                  {isAligning ? "Aligning..." : "Align"}
-                </button>
+              {/* 底部对齐结论 + 操作栏 */}
+              <div className="flex flex-col md:flex-row md:h-50 gap-3 border-t border-gray-200 p-4 bg-white">
+                <div className="hidden md:block w-1 self-stretch rounded-full bg-gray-900" />
+                <div className="flex-1 min-w-0 rounded-lg p-2 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar]:bg-slate-100 hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
+                  {alignmentResult ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-base font-bold text-gray-900">
+                            Alignment conclusion
+                          </h3>
+                          {typeof alignmentResult.overall_score ===
+                            "number" && (
+                            <p className="text-[13px] font-semibold text-red-700">
+                              (Overall Score:
+                              <span className="font-semibold text-red-700">
+                                {(alignmentResult.overall_score * 100).toFixed(0,)}%
+                              </span>)
+                            </p>
+                          )}
+                        </div>
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            isNoGoAlignment
+                              ? "bg-red-100 text-red-700"
+                              : "bg-green-100 text-green-700"
+                          }`}
+                        >
+                          {isNoGoAlignment ? "NO-GO" : "GO"}
+                        </span>
+                      </div>
+
+                      {alignmentResult.summary && (
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {alignmentResult.summary}
+                          </ReactMarkdown>
+                        </p>
+                      )}
+
+                      {isNoGoAlignment &&
+                        Array.isArray(alignmentResult.blocking_issues) &&
+                        alignmentResult.blocking_issues.length > 0 && (
+                          <div className="rounded-md border border-red-200 bg-red-50 p-2">
+                            <p className="text-xs font-semibold text-red-700 mb-1">
+                              Blocking Issues
+                            </p>
+                            <ul className="list-disc pl-4 space-y-1">
+                              {alignmentResult.blocking_issues.map(
+                                (issue: string, idx: number) => (
+                                  <li
+                                    key={`blocking-${idx}`}
+                                    className="text-xs text-red-700 leading-relaxed"
+                                  >
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                      {issue}
+                                    </ReactMarkdown>
+                                  </li>
+                                ),
+                              )}
+                            </ul>
+                          </div>
+                        )}
+
+                      {!isNoGoAlignment && (
+                        <p className="text-xs text-green-700">
+                          Current can run now!
+                        </p>
+                      )}
+
+                      {Array.isArray(alignmentResult.recommended_actions) &&
+                        alignmentResult.recommended_actions.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-gray-700 mb-1">
+                              Recommended Actions
+                            </p>
+                            <ul className="list-disc pl-4 space-y-1">
+                              {alignmentResult.recommended_actions.map(
+                                (action: string, idx: number) => (
+                                  <li
+                                    key={`action-${idx}`}
+                                    className="text-xs text-gray-600 leading-relaxed"
+                                  >
+                                    {action}
+                                  </li>
+                                ),
+                              )}
+                            </ul>
+                          </div>
+                        )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500">
+                      Click Align to generate alignment conclusion.
+                    </p>
+                  )}
+                </div>
+
+                <div className="w-full shrink-0 md:w-40 flex flex-col justify-center gap-2">
+                  <button
+                    onClick={handleAlign}
+                    disabled={!activeChatId || isAligning || isScanning}
+                    title="对齐数据与模型要求"
+                    className="w-full px-3 py-3 bg-slate-900 text-white rounded-lg hover:bg-blue-800 disabled:bg-gray-300 transition-all"
+                  >
+                    {isAligning ? "Aligning..." : "Align"}
+                  </button>
+
+                  {isNoGoAlignment && (
+                    <button
+                      onClick={handleMapping}
+                      disabled={!activeChatId || isAligning || isScanning}
+                      title="映射数据为模型要求"
+                      className="w-full px-3 py-3 bg-slate-900 text-white rounded-lg hover:bg-blue-800 disabled:bg-gray-300 transition-all"
+                    >
+                      Map
+                    </button>
+                  )}
+                </div>
               </div>
             </motion.div>
           </motion.div>
