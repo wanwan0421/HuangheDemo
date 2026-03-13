@@ -75,6 +75,18 @@ export default function Resources() {
   const [open, setOpen] = useState(false); // 搜索分类下拉框状态
   const [selected, setSelected] = useState(categoryTitles[0]); // 目录分类选中状态
   const [inputValue, setInputValue] = useState(""); // 搜索输入框输入值
+  const [activeResourceType, setActiveResourceType] = useState<"models" | "methods">("models"); // 资源类型切换：模型 / 方法
+
+  const inferResourceTypeByTopMenu = (title: string): "models" | "methods" => {
+    const normalizedTitle = title.toLowerCase();
+    if (title.includes("方法") || normalizedTitle.includes("method")) {
+      return "methods";
+    }
+    if (title.includes("模型") || normalizedTitle.includes("model")) {
+      return "models";
+    }
+    return activeResourceType;
+  };
 
   // 处理搜索操作，包括分类以及关键字查询
   const onSearch = () => {
@@ -99,8 +111,12 @@ export default function Resources() {
     console.log("选中的最终标签 (用于后端查询):", selectedMenuId);
     console.log("搜索关键字：", inputValue);
 
-    // 调用资源获取函数
-    fetchAndSetResources([selectedMenuId || ""], inputValue);
+    // 根据当前资源类型调用对应的获取函数
+    if (activeResourceType === "methods") {
+      fetchAndSetMethods([selectedMenuId || ""], inputValue);
+    } else {
+      fetchAndSetResources([selectedMenuId || ""], inputValue);
+    }
   };
 
   const pageSize = 10;
@@ -124,7 +140,6 @@ export default function Resources() {
     if (keyword) {
       queryParams.append("keyword", keyword);
     }
-    console.log("fetchResources - queryParams:", queryParams.toString());
 
     const url = `${BACK_URL}/resource/findModels?${queryParams.toString()}`;
 
@@ -156,13 +171,57 @@ export default function Resources() {
     setLoading(false);
   };
 
+  // 获取方法资源
+  const fetchMethods = async (filter: ResourceFilter) => {
+    const { categoryId, keyword } = filter;
+
+    const queryParams = new URLSearchParams();
+    if (categoryId.length > 0) {
+      queryParams.append("categoryId", categoryId.join(","));
+    }
+    if (keyword) {
+      queryParams.append("keyword", keyword);
+    }
+    console.log("fetchMethods - queryParams:", queryParams.toString());
+
+    const url = `${BACK_URL}/resource/findMethods?${queryParams.toString()}`;
+
+    try {
+      const response = await fetch(url);
+      const result: ResourceItem[] = await response.json();
+
+      return { data: result, total: result.length };
+    } catch (error) {
+      return { data: [], total: 0 };
+    }
+  };
+
+  // 执行获取方法资源以及设置状态
+  const fetchAndSetMethods = async (
+    categoryId: string[] | [],
+    keyword: string
+  ) => {
+    setLoading(true);
+    setCurrentPage(1);
+
+    const { data, total } = await fetchMethods({
+      categoryId: categoryId,
+      keyword: keyword,
+    });
+
+    setResourceList(data);
+    setTotalResources(total);
+    setLoading(false);
+  };
+
   // 处理第四级目录
   const clickForActiveAndFetchResources = (
     parentIndex: number | null,
     childIndex: number | null,
     subChildIndex: number | null,
     subSubChildIndex: number | null,
-    node: MenuDataItem | MenuLeafItem
+    node: MenuDataItem | MenuLeafItem,
+    resourceType?: "models" | "methods"
   ) => {
     setActive({
       parent: parentIndex,
@@ -171,11 +230,14 @@ export default function Resources() {
       subSubChild: subSubChildIndex,
     });
 
+    const currentResourceType = resourceType ?? activeResourceType;
+    const fetchFn =
+      currentResourceType === "methods" ? fetchAndSetMethods : fetchAndSetResources;
     if ("children" in node) {
       console.log("点击了非叶子节点，fetch全部子节点资源", node);
-      fetchAndSetResources(node.id, inputValue);
+      fetchFn(node.id, inputValue);
     } else {
-      fetchAndSetResources([node.id], inputValue);
+      fetchFn([node.id], inputValue);
     }
   };
 
@@ -264,18 +326,21 @@ export default function Resources() {
               <button
                 className={`flex gap-2 w-full pl-1 font-sans text-[18px] font-bold text-black ${
                   active.parent === parentIndex
-                    ? "text-blue-800 bg-blue-200/40 shadow-xl"
+                    ? "text-white bg-slate-900 shadow-sm"
                     : "text-black"
                 } text-left mb-2`}
-                onClick={() =>
+                onClick={() => {
+                  const nextResourceType = inferResourceTypeByTopMenu(menu.title);
+                  setActiveResourceType(nextResourceType);
                   clickForActiveAndFetchResources(
                     parentIndex,
                     null,
                     null,
                     null,
-                    menu
-                  )
-                }
+                    menu,
+                    nextResourceType,
+                  );
+                }}
               >
                 {menu.title}
               </button>
@@ -348,7 +413,7 @@ export default function Resources() {
                                 childIndex,
                                 null,
                                 null,
-                                secondLevelChildrenObj
+                                secondLevelChildrenObj,
                               )
                             }
                           >
@@ -390,7 +455,7 @@ export default function Resources() {
                                           handleLevlel3Toggle(
                                             parentIndex,
                                             childIndex,
-                                            subChildIndex
+                                            subChildIndex,
                                           );
                                         }}
                                       />
@@ -404,7 +469,7 @@ export default function Resources() {
                                             childIndex,
                                             subChildIndex,
                                             null,
-                                            thirdLevelChildrenObj
+                                            thirdLevelChildrenObj,
                                           )
                                         }
                                       >
@@ -420,13 +485,13 @@ export default function Resources() {
                                         ).map(
                                           (
                                             fourthLevelChildren,
-                                            subSubChildIndex
+                                            subSubChildIndex,
                                           ) => {
                                             const isL4Active =
                                               isActivePath(
                                                 active,
                                                 4,
-                                                subSubChildIndex
+                                                subSubChildIndex,
                                               ) &&
                                               active.parent === parentIndex &&
                                               active.child === childIndex &&
@@ -446,20 +511,20 @@ export default function Resources() {
                                                     childIndex,
                                                     subChildIndex,
                                                     subSubChildIndex,
-                                                    fourthLevelChildren
+                                                    fourthLevelChildren,
                                                   )
                                                 }
                                               >
                                                 {fourthLevelChildren.title}
                                               </button>
                                             );
-                                          }
+                                          },
                                         )}
                                       </div>
                                     )}
                                   </div>
                                 );
-                              }
+                              },
                             )}
                           </div>
                         )}
