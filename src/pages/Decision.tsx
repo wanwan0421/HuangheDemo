@@ -592,17 +592,96 @@ export default function IntelligentDecision() {
 
     setIsAligning(true);
     try {
-      // 调用POST接口
+      // 调用POST接口，优先按SSE流式返回解析
       const alignResponse = await fetch(
         `${BACK_URL}/chat/sessions/${activeChatId}/align`,
-        { method: "POST" }
+        {
+          method: "POST",
+          headers: {
+            Accept: "text/event-stream, application/json",
+          },
+        }
       );
 
       if (!alignResponse.ok) {
         throw new Error(`Align failed with status ${alignResponse.status}`);
       }
 
-      const alignData = await alignResponse.json();
+      let alignData: any = null;
+      const contentType = alignResponse.headers.get("content-type") || "";
+
+      if (contentType.includes("text/event-stream")) {
+        if (!alignResponse.body) {
+          throw new Error("Align stream body is empty");
+        }
+
+        const reader = alignResponse.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let finalPayload: any = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          while (true) {
+            const nn = buffer.indexOf("\n\n");
+            const rrnn = buffer.indexOf("\r\n\r\n");
+            const sepIndex =
+              nn === -1 ? rrnn : rrnn === -1 ? nn : Math.min(nn, rrnn);
+            if (sepIndex < 0) {
+              break;
+            }
+
+            const block = buffer.slice(0, sepIndex);
+            const sepLen = buffer.startsWith("\r\n", sepIndex) ? 4 : 2;
+            buffer = buffer.slice(sepIndex + sepLen);
+
+            const dataLines: string[] = [];
+            block.split(/\r?\n/).forEach((rawLine) => {
+              const line = rawLine.trim();
+              if (!line) return;
+              if (line.startsWith("data:")) {
+                dataLines.push(line.replace(/^data:\s*/, ""));
+              }
+            });
+
+            if (!dataLines.length) {
+              continue;
+            }
+
+            const jsonStr = dataLines.join("\n");
+            let payload: any;
+            try {
+              payload = JSON.parse(jsonStr);
+            } catch (err) {
+              console.warn("align SSE JSON parse warning:", err);
+              continue;
+            }
+
+            if (payload?.type === "error") {
+              throw new Error(payload?.message || "Align stream error");
+            }
+
+            if (payload?.type === "final") {
+              finalPayload = payload?.data ?? payload;
+            }
+          }
+        }
+
+        if (!finalPayload) {
+          throw new Error("Align stream ended without final payload");
+        }
+
+        alignData = finalPayload;
+      } else {
+        // 兼容非SSE返回
+        alignData = await alignResponse.json();
+      }
+
+      console.log("Alignment response:", alignData);
 
       const normalizeDecision = (value: any): "go" | "no-go" | undefined => {
         if (typeof value !== "string") return undefined;
@@ -616,7 +695,15 @@ export default function IntelligentDecision() {
         return undefined;
       };
 
-      const alignment_result = alignData.data?.alignment_result;
+      const resultRoot = alignData?.data ?? alignData;
+      const alignment_result =
+        resultRoot?.alignment_result && typeof resultRoot.alignment_result === "object"
+          ? { ...resultRoot.alignment_result }
+          : null;
+
+      if (!alignment_result) {
+        throw new Error("Invalid alignment result payload");
+      }
 
       const hasBlockingIssues =
         Array.isArray(alignment_result.blocking_issues) &&
@@ -625,10 +712,10 @@ export default function IntelligentDecision() {
       const decisionFromFlags =
         hasBlockingIssues ||
         alignment_result.can_run_now === false ||
-        normalizeDecision(alignment_result.alignment_status) === "no-go";
+        normalizeDecision(resultRoot?.alignment_status ?? alignment_result.alignment_status) === "no-go";
 
       const normalizedDecision =
-        normalizeDecision(alignment_result.go_no_go) ??
+        normalizeDecision(resultRoot?.go_no_go ?? alignment_result.go_no_go) ??
         (decisionFromFlags ? "no-go" : "go");
 
       if (normalizedDecision === "no-go") {
@@ -1104,14 +1191,22 @@ export default function IntelligentDecision() {
                                                     }));
 
                                                     // 添加到已上传文件列表
+                                                    // 先移除同一inputName的旧文件，再添加新的
                                                     setUploadedFiles((prev) => [
-                                                      ...prev,
+                                                      ...prev.filter(
+                                                        (f) => f.inputName !== input.name
+                                                      ),
                                                       {
                                                         name: file.name,
                                                         file,
                                                         inputName: input.name,
                                                       },
                                                     ]);
+
+                                                    // 清理所有扫描结果（重新上传会使旧的扫描结果失效）
+                                                    setScanResults({});
+                                                    // 清理对齐结果
+                                                    setAlignmentResult(null);
                                                   }
                                                 }}
                                               />
@@ -1342,11 +1437,11 @@ export default function IntelligentDecision() {
                       </div>
 
                       {alignmentResult.summary && (
-                        <p className="text-xs text-gray-600 leading-relaxed">
+                        <div className="text-xs text-gray-600 leading-relaxed">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {alignmentResult.summary}
                           </ReactMarkdown>
-                        </p>
+                        </div>
                       )}
 
                       {isNoGoAlignment &&
@@ -1379,20 +1474,22 @@ export default function IntelligentDecision() {
                         </p>
                       )}
 
-                      {Array.isArray(alignmentResult.recommended_actions) &&
-                        alignmentResult.recommended_actions.length > 0 && (
+                      {isNoGoAlignment && Array.isArray(alignmentResult.suggested_transformations) &&
+                        alignmentResult.suggested_transformations.length > 0 && (
                           <div>
                             <p className="text-xs font-semibold text-gray-700 mb-1">
-                              Recommended Actions
+                              Suggested Transformations
                             </p>
                             <ul className="list-disc pl-4 space-y-1">
-                              {alignmentResult.recommended_actions.map(
-                                (action: string, idx: number) => (
+                              {alignmentResult.suggested_transformations.map(
+                                (transformation: string, idx: number) => (
                                   <li
-                                    key={`action-${idx}`}
+                                    key={`transformation-${idx}`}
                                     className="text-xs text-gray-600 leading-relaxed"
                                   >
-                                    {action}
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                      {transformation}
+                                    </ReactMarkdown>
                                   </li>
                                 ),
                               )}

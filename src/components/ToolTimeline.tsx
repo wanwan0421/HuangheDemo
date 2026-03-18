@@ -241,14 +241,20 @@ function renderDynamicFields(profile: any) {
             <span className="text-[14px] font-bold text-black tracking-wide">Supplementary Metadata</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-y-3 gap-x-8">
-            {lightFields.map(([key, value]) => (
-              <div key={key}>
-                <span className="text-[13px] text-slate-400 font-bold block">{key.replace(/_/g, ' ')}</span>
-                <span className="text-[13px] font-black text-slate-800 break-all leading-tight">
-                  {String(value)}
-                </span>
-              </div>
-            ))}
+            {lightFields.map(([key, value]) => {
+              const displayValue = String(typeof value === 'number' ? value.toFixed(2) : value);
+              return (
+                <div key={key}>
+                  <span className="text-[13px] text-slate-400 font-bold block">{key.replace(/_/g, ' ')}</span>
+                  <span 
+                    className="text-[13px] font-black text-slate-800 truncate leading-tight block cursor-help"
+                    title={displayValue}
+                  >
+                    {displayValue}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
