@@ -1,7 +1,8 @@
 import { useOutletContext } from "react-router-dom";
 import React, { useState, useEffect } from "react";
-import { ChevronDown, Search, Loader2, Mail } from "lucide-react";
+import { ChevronDown, Search, Loader2, Mail, Heart } from "lucide-react";
 import TagRecords, { buildMenuData, type MenuDataItem, type MenuLeafItem } from "../util/record";
+import { getFavoriteModels, toggleFavoriteModel, type FavoriteModel } from "../lib/userCenter.ts";
 
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
@@ -66,16 +67,20 @@ export default function Resources() {
     subSubChild: null,
   });
   const [resourceList, setResourceList] = useState<ResourceItem[]>([]); // 存储资源列表
-  const [totalResources, setTotalResources] = useState(0); // 存储总资源数
   const [loading, setLoading] = useState(false); // 加载状态
 
   const { darkMode } = useOutletContext<OutletContextType>(); // 模式状态
   const textColor = darkMode ? "text-white" : "text-black"; // 文字颜色（与模式状态对应）
-  const invertedColor = darkMode ? "text-black" : "text-white";
   const [open, setOpen] = useState(false); // 搜索分类下拉框状态
   const [selected, setSelected] = useState(categoryTitles[0]); // 目录分类选中状态
   const [inputValue, setInputValue] = useState(""); // 搜索输入框输入值
   const [activeResourceType, setActiveResourceType] = useState<"models" | "methods">("models"); // 资源类型切换：模型 / 方法
+  const [favoriteModelNames, setFavoriteModelNames] = useState<Set<string>>(new Set());
+
+  const refreshFavoriteModels = React.useCallback(async () => {
+    const favorites = await getFavoriteModels();
+    setFavoriteModelNames(new Set(favorites.map((item: FavoriteModel) => item.name)));
+  }, []);
 
   const inferResourceTypeByTopMenu = (title: string): "models" | "methods" => {
     const normalizedTitle = title.toLowerCase();
@@ -161,13 +166,12 @@ export default function Resources() {
     setLoading(true);
     setCurrentPage(1); // 重置到第一页
 
-    const { data, total } = await fetchResources({
+    const { data } = await fetchResources({
       categoryId: categoryId,
       keyword: keyword,
     });
 
     setResourceList(data);
-    setTotalResources(total);
     setLoading(false);
   };
 
@@ -204,13 +208,12 @@ export default function Resources() {
     setLoading(true);
     setCurrentPage(1);
 
-    const { data, total } = await fetchMethods({
+    const { data } = await fetchMethods({
       categoryId: categoryId,
       keyword: keyword,
     });
 
     setResourceList(data);
-    setTotalResources(total);
     setLoading(false);
   };
 
@@ -290,7 +293,8 @@ export default function Resources() {
 
   useEffect(() => {
     const initialData = async () => {
-      return await fetchAndSetResources([], "");
+      await fetchAndSetResources([], "");
+      await refreshFavoriteModels();
     };
 
     initialData();
@@ -301,7 +305,18 @@ export default function Resources() {
       subChild: null,
       subSubChild: null,
     });
-  }, []);
+
+  }, [refreshFavoriteModels]);
+
+  const handleToggleFavoriteModel = async (item: ResourceItem) => {
+    const favorited = await toggleFavoriteModel({
+      name: item.name,
+      description: item.description,
+      source: "model-library",
+    });
+    await refreshFavoriteModels();
+    alert(favorited ? `已收藏模型：${item.name}` : `已取消收藏模型：${item.name}`);
+  };
 
   return (
     <div className="flex flex-1 flex-col">
@@ -330,7 +345,9 @@ export default function Resources() {
                     : "text-black"
                 } text-left mb-2`}
                 onClick={() => {
-                  const nextResourceType = inferResourceTypeByTopMenu(menu.title);
+                  const nextResourceType = inferResourceTypeByTopMenu(
+                    menu.title,
+                  );
                   setActiveResourceType(nextResourceType);
                   clickForActiveAndFetchResources(
                     parentIndex,
@@ -614,9 +631,37 @@ export default function Resources() {
                   >
                     {/* 顶部内容区域 */}
                     <div>
-                      <h3 className="text-lg font-semibold text-black mb-2 line-clamp-1">
-                        {item.name}
-                      </h3>
+                      <div className="flex justify-between items-center gap-2">
+                        <h3 className="text-lg font-semibold text-black mb-0 leading-6 line-clamp-1">
+                          {item.name}
+                        </h3>
+                        {activeResourceType === "models" && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleFavoriteModel(item);
+                            }}
+                            className={`shrink-0 inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs ${
+                              favoriteModelNames.has(item.name)
+                                ? "border-rose-300 bg-rose-50 text-rose-600"
+                                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                            }`}
+                          >
+                            <Heart
+                              size={12}
+                              className={
+                                favoriteModelNames.has(item.name)
+                                  ? "fill-rose-500 text-rose-500"
+                                  : "text-gray-600"
+                              }
+                            />
+                            {favoriteModelNames.has(item.name)
+                              ? "已收藏"
+                              : "收藏"}
+                          </button>
+                        )}
+                      </div>
                       <p className="text-sm text-gray-700 leading-relaxed line-clamp-2 mb-3 h-[50px]">
                         {item.description}
                       </p>
@@ -640,11 +685,6 @@ export default function Resources() {
                           </span>
                         )}
                       </div>
-
-                      {/* 操作按钮
-                      <button className="text-blue-600 hover:underline text-sm flex-shrink-0">
-                        View →
-                      </button> */}
                     </div>
 
                     {/* 作者邮箱和创建时间 */}

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import ChatInput from "../components/ChatInput";
-import { Earth, SquarePen, Search, Sparkles, Activity, MoreVertical, Info } from "lucide-react";
+import { Earth, SquarePen, Search, Sparkles, Activity, MoreVertical, Info, Copy, Check, ScanSearch, Play, Columns2, Heart } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ModelExecuteProcess from "../components/ModelExecuteProcess";
 import ToolTimeline from "../components/ToolTimeline";
@@ -11,27 +11,16 @@ import type { WorkflowState, Message} from "../types";
 import TaskSpecCard from "../components/TaskSpecCard";
 import { RequirementTooltip, type ModelContractItem } from "../components/ModelContract";
 import MapboxViewer from "../components/mapbox";
+import { isModelFavorited, toggleFavoriteModel } from "../lib/userCenter.ts";
 
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
 
-// Reducer Action Types
-type Action = { type: "ADD_STEP"; payload: string } | { type: "RESET" };
-
-function runStatusReducer(state: String[], action: Action): String[] {
-  switch (action.type) {
-    case "ADD_STEP":
-      return [...state, action.payload];
-    case "RESET":
-      return [];
-    default:
-      return state;
-  }
-}
-
 export default function IntelligentDecision() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const copyResetTimerRef = React.useRef<number | null>(null);
 
   // 当前任务需求
   const [currentTaskSpec, setCurrentTaskSpec] = useState<any | null>(null);
@@ -41,6 +30,7 @@ export default function IntelligentDecision() {
   // 推荐的模型信息
   const [recommendedModelName, setRecommendedModelName] = useState<string | null>(null);
   const [recommendedModelDesc, setRecommendedModelDesc] = useState<string | null>(null);
+  const [isRecommendedModelFavorited, setIsRecommendedModelFavorited] = useState(false);
   const [workflow, setWorkflow] = useState<WorkflowState[]>([]);
 
   // 扫描数据状态
@@ -73,9 +63,15 @@ export default function IntelligentDecision() {
         alignmentResult.blocking_issues.length > 0)
     );
 
-  // 设置模型运行状态
-  const [runStatus, dispatch] = React.useReducer(runStatusReducer, []);
+  // 模型运行状态
   const [isRunning, setIsRunning] = useState(false);
+  // @ts-ignore - taskId is stored for potential future use (debugging, recovery)
+  const [modelTaskId, setModelTaskId] = useState<string | null>(null);
+  const [modelTaskStatus, setModelTaskStatus] = useState<string>('idle'); // idle, running, completed, failed
+  const [modelRunResult, setModelRunResult] = useState<any | null>(null);
+  const [modelRunError, setModelRunError] = useState<string | null>(null);
+  const [rightPanelMode, setRightPanelMode] = useState<"form" | "execution">("form");
+  const statusCheckIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 设置对话列表状态
   const [sessionList, setSessionList] = useState<any[]>([]);
@@ -91,10 +87,18 @@ export default function IntelligentDecision() {
     setWorkflow([]);
     setUploadedData({});
     setIsRunning(false);
-    dispatch({ type: "RESET" });
+    setModelTaskId(null);
+    setModelTaskStatus('idle');
+    setModelRunResult(null);
+    setModelRunError(null);
+    setRightPanelMode("form");
     setCurrentTaskSpec(null);
     setModelContract(null);
     setAlignmentResult(null);
+
+    if (statusCheckIntervalRef.current) {
+      clearInterval(statusCheckIntervalRef.current);
+    }
 
     if (!keepSessionId) {
       setActiveChatId(null);
@@ -112,6 +116,118 @@ export default function IntelligentDecision() {
       });
     }
   }, [messages]);
+
+  React.useEffect(() => {
+    return () => {
+      if (copyResetTimerRef.current) {
+        window.clearTimeout(copyResetTimerRef.current);
+      }
+      if (statusCheckIntervalRef.current) {
+        clearInterval(statusCheckIntervalRef.current);
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!recommendedModelName) {
+      setIsRecommendedModelFavorited(false);
+      return;
+    }
+
+    let cancelled = false;
+    isModelFavorited(recommendedModelName)
+      .then((favorited: boolean) => {
+        if (!cancelled) setIsRecommendedModelFavorited(favorited);
+      })
+      .catch(() => {
+        if (!cancelled) setIsRecommendedModelFavorited(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [recommendedModelName]);
+
+  const handleToggleRecommendedModelFavorite = async () => {
+    if (!recommendedModelName) return;
+
+    const favorited = await toggleFavoriteModel({
+      name: recommendedModelName,
+      description: recommendedModelDesc || "",
+      source: "ai-recommendation",
+    });
+
+    setIsRecommendedModelFavorited(favorited);
+    alert(favorited ? "已收藏该推荐模型" : "已取消收藏该推荐模型");
+  };
+
+  const copyTextToClipboard = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    const success = document.execCommand("copy");
+    document.body.removeChild(textarea);
+
+    if (!success) {
+      throw new Error("Clipboard unavailable");
+    }
+  };
+
+  const getMessageCopyText = (msg: Message) => {
+    const parts: string[] = [];
+    const textContent = msg.content?.trim();
+
+    if (textContent) {
+      parts.push(textContent);
+    }
+
+    if (Array.isArray(msg.tools) && msg.tools.length > 0) {
+      const toolText = msg.tools
+        .map((tool, index) => {
+          const title = tool.title || tool.kind || `工具${index + 1}`;
+          const resultText =
+            typeof tool.result === "string"
+              ? tool.result
+              : JSON.stringify(tool.result ?? {}, null, 2);
+          return `${title}\n${resultText}`;
+        })
+        .join("\n\n");
+      parts.push(toolText);
+    }
+
+    return parts.join("\n\n").trim();
+  };
+
+  const handleCopyMessage = async (msg: Message) => {
+    const text = getMessageCopyText(msg);
+    if (!text) return;
+
+    try {
+      await copyTextToClipboard(text);
+      setCopiedMessageId(msg.id);
+
+      if (copyResetTimerRef.current) {
+        window.clearTimeout(copyResetTimerRef.current);
+      }
+
+      copyResetTimerRef.current = window.setTimeout(() => {
+        setCopiedMessageId(null);
+      }, 1500);
+    } catch (err) {
+      console.error("Copy message failed", err);
+      alert("复制失败，请检查浏览器剪贴板权限");
+    }
+  };
 
   // 处理对话切换或者初始化
   React.useEffect(() => {
@@ -313,8 +429,12 @@ export default function IntelligentDecision() {
     setRecommendedModelName(null);
     setRecommendedModelDesc(null);
     setWorkflow([]);
-    dispatch({ type: "RESET" });
     setIsRunning(false);
+    setModelTaskId(null);
+    setModelTaskStatus('idle');
+    setModelRunResult(null);
+    setModelRunError(null);
+    setRightPanelMode("form");
     setCurrentTaskSpec(null);
     setModelContract(null);
 
@@ -323,6 +443,7 @@ export default function IntelligentDecision() {
       `${BACK_URL}/chat/sessions/${currentSessionId}/chat?query=${encodeURIComponent(
         prompt,
       )}`,
+      { withCredentials: true }
     );
 
     es.onmessage = (e: MessageEvent) => {
@@ -515,6 +636,7 @@ export default function IntelligentDecision() {
         // 发起扫描请求
         const es = new EventSource(
           `${BACK_URL}/data-mapping/sessions/${activeChatId}/data-scan?${params.toString()}`,
+          { withCredentials: true }
         );
 
         // 收集该文件的扫描结果
@@ -759,6 +881,9 @@ export default function IntelligentDecision() {
       await sessionResponse.json();
   }
 
+  // 右侧面板滚动引用
+  const rightPanelScrollRef = React.useRef<HTMLDivElement>(null);
+
   // 获取所有需要显示的数据
   const getAllGeoJsonDataForMap = useMemo(() => {
     const allData: any[] = [];
@@ -794,10 +919,86 @@ export default function IntelligentDecision() {
     );
   };
 
-  // 运行模型：构造FormData并调用后端接口，同时启动一个定时器模拟模型执行过程中的步骤更新
+  // 轮询获取任务状态
+  const pollTaskStatus = async (taskId: string) => {
+    try {
+      const response = await fetch(`${BACK_URL}/model/status/${taskId}`);
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || "Failed to get task status");
+      }
+
+      const statusPayload = data.data;
+
+      // 后端约定：轮询直到 status === "Finished"
+      const currentStatus =
+        typeof statusPayload === "string"
+          ? statusPayload
+          : statusPayload?.status ?? "Running";
+
+      if (currentStatus === "Finished") {
+        setModelTaskStatus('completed');
+        if (statusCheckIntervalRef.current) {
+          clearInterval(statusCheckIntervalRef.current);
+          statusCheckIntervalRef.current = null;
+        }
+
+        // 获取最终结果
+        try {
+          const resultResponse = await fetch(`${BACK_URL}/model/result/${taskId}`);
+          const resultData = await resultResponse.json();
+
+          if (resultData.success) {
+            // 后端约定：输出在 data.result 中（每项包含 url）
+            setModelRunResult(resultData.data ?? null);
+          } else {
+            throw new Error(resultData.message || "Failed to get result");
+          }
+        } catch (resultError) {
+          console.error("Error fetching result:", resultError);
+          setModelTaskStatus('failed');
+          setModelRunError((resultError instanceof Error ? resultError.message : "Failed to fetch result"));
+        }
+      } else if (currentStatus === "Failed" || currentStatus === "Error") {
+        console.error("Task execution failed with status:", currentStatus, "details:", statusPayload);
+        setModelTaskStatus('failed');
+        if (statusCheckIntervalRef.current) {
+          clearInterval(statusCheckIntervalRef.current);
+          statusCheckIntervalRef.current = null;
+        }
+        setModelRunError(statusPayload?.error || "Task execution failed");
+      } else {
+        // 其余状态继续轮询
+        setModelTaskStatus('running');
+      }
+    } catch (error) {
+      console.error("Error polling task status:", error);
+      setModelTaskStatus('failed');
+      setModelRunError(error instanceof Error ? error.message : "Failed to check task status");
+      if (statusCheckIntervalRef.current) {
+        clearInterval(statusCheckIntervalRef.current);
+        statusCheckIntervalRef.current = null;
+      }
+    }
+  };
+
+  // 运行模型：发布任务，然后轮询状态直到完成
   const handleRun = async () => {
     setIsRunning(true);
-    dispatch({ type: "RESET" });
+    setModelTaskId(null);
+    setModelTaskStatus('running');
+    setModelRunResult(null);
+    setModelRunError(null);
+    setRightPanelMode("execution");
+
+    // 自动滚动右侧面板到顶部，显示执行状态
+    if (rightPanelScrollRef.current) {
+      setTimeout(() => {
+        rightPanelScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 0);
+    }
+
     const formData = new FormData();
 
     // 构造基础信息
@@ -831,36 +1032,37 @@ export default function IntelligentDecision() {
         method: "POST",
         body: formData,
       });
+
       const responseData = await response.json();
-      const result = responseData.result;
-      console.log("Model run initiated, response:", result);
+      if (!response.ok) {
+        throw new Error(responseData?.message || `Request failed: ${response.status}`);
+      }
 
-      const steps = [
-        "Check data format",
-        "Data preprocessing",
-        "Model core computing",
-        "Output result generation in progress",
-      ];
-      let i = 0;
+      const taskId = responseData.data?.taskId;
+      if (!taskId) {
+        throw new Error("No taskId returned from backend");
+      }
 
-      const executeStep = () => {
-        if (i < steps.length) {
-          console.log("i:", i);
-          console.log("steps[i]:", steps[i]);
+      console.log("Model task published, taskId:", taskId);
+      setModelTaskId(taskId);
+      setModelTaskStatus('running');
+      setIsRunning(false);
 
-          // 使用dispatch进行同步更新
-          dispatch({ type: "ADD_STEP", payload: steps[i] });
+      // 先立即检查一次，避免已经完成但UI还在等待
+      pollTaskStatus(taskId);
 
-          i++;
-          setTimeout(executeStep, 72000);
-        } else {
-          dispatch({ type: "ADD_STEP", payload: "Model execution finished!" });
-        }
-      };
-      // 强制立即启动
-      executeStep();
+      // 开始轮询任务状态（每2秒检查一次）
+      if (statusCheckIntervalRef.current) {
+        clearInterval(statusCheckIntervalRef.current);
+      }
+      statusCheckIntervalRef.current = setInterval(() => {
+        pollTaskStatus(taskId);
+      }, 2000);
     } catch (error) {
       console.error("Error running model:", error);
+      setModelRunError(error instanceof Error ? error.message : "Task publish failed, please retry.");
+      setIsRunning(false);
+      setModelTaskStatus('failed');
     }
   };
 
@@ -964,7 +1166,12 @@ export default function IntelligentDecision() {
       <main className="flex flex-1 flex-col min-w-[350px]">
         <div
           ref={scrollRef}
-          className="flex-1 p-6 overflow-y-auto bg-white min-h-0"
+          className="flex-1 p-6 overflow-y-auto bg-white min-h-0 [scrollbar-width:thin] [scrollbar-color:#e5e7eb_transparent]
+            [&::-webkit-scrollbar]:w-1
+            [&::-webkit-scrollbar-track]:bg-transparent
+            [&::-webkit-scrollbar-thumb]:bg-gray-200/50
+            hover:[&::-webkit-scrollbar-thumb]:bg-gray-300/60
+            [&::-webkit-scrollbar-thumb]:rounded-full"
         >
           {messages.length === 0 ? (
             <div className="flex flex-col justify-center items-center h-full">
@@ -980,7 +1187,7 @@ export default function IntelligentDecision() {
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`flex ${
+                  className={`group flex ${
                     msg.role === "user" ? "justify-end" : "justify-start"
                   }`}
                 >
@@ -991,6 +1198,29 @@ export default function IntelligentDecision() {
                         <p className="text-base">{msg.content}</p>
                       </div>
                     )}
+
+                    {(() => {
+                      const canCopy = getMessageCopyText(msg).length > 0;
+                      const copied = copiedMessageId === msg.id;
+
+                      return (
+                        <button
+                          type="button"
+                          disabled={!canCopy}
+                          onClick={() => handleCopyMessage(msg)}
+                          className={`inline-flex items-center gap-1 text-xs ${msg.role === "user" ? "self-end" : "self-start"} transition-all duration-150 ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"} ${
+                            canCopy
+                              ? "text-gray-600 hover:text-gray-900"
+                              : "text-gray-300 cursor-not-allowed"
+                          }`}
+                          aria-label="复制消息"
+                          title={canCopy ? "复制消息" : "暂无可复制内容"}
+                        >
+                          {copied ? <Check size={14} /> : <Copy size={14} />}
+                          <span>{copied ? "已复制" : "复制"}</span>
+                        </button>
+                      );
+                    })()}
 
                     {/* 渲染AI消息区域 */}
                     {msg.role === "AI" && (
@@ -1051,17 +1281,81 @@ export default function IntelligentDecision() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 80 }}
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className="flex-none w-full md:w-[45%] lg:w-[40%] min-w-[320px] max-w-[750px] flex flex-col overflow-y-auto"
+            className="flex-none w-full md:w-[45%] lg:w-[40%] min-w-[320px] max-w-[750px] flex flex-col overflow-y-auto
+            [scrollbar-width:thin] [scrollbar-color:#e5e7eb_transparent]
+            [&::-webkit-scrollbar]:w-1
+            [&::-webkit-scrollbar-track]:bg-transparent
+            [&::-webkit-scrollbar-thumb]:bg-gray-200/50
+            hover:[&::-webkit-scrollbar-thumb]:bg-gray-300/60
+            [&::-webkit-scrollbar-thumb]:rounded-full"
           >
-            <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+            <div
+              className="flex-1 overflow-y-auto p-5 custom-scrollbar"
+              ref={rightPanelScrollRef}
+            >
               {currentTaskSpec && (
                 <div className="mb-8">
                   <TaskSpecCard data={currentTaskSpec} />
                 </div>
               )}
 
-              {/* Now, LLM has recommend the most suitable model, and user needs to upload data */}
-              {recommendedModelName && !isRunning && (
+              {recommendedModelName && (
+                <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <Columns2 size={14} />
+                      <span>面板视图</span>
+                    </div>
+                    {rightPanelMode === "execution" ? (
+                      <button
+                        onClick={() => setRightPanelMode("form")}
+                        className="px-3 py-1.5 rounded-md text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-200 disabled:text-gray-500 transition"
+                      >
+                        查看输入表单
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setRightPanelMode("execution")}
+                        disabled={
+                          modelTaskStatus === "idle" &&
+                          !modelRunResult &&
+                          !modelRunError
+                        }
+                        className="px-3 py-1.5 rounded-md text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-200 disabled:text-gray-500 transition"
+                      >
+                        查看模型执行
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 运行态/结果态：直接显示模型执行状态和结果 */}
+              {recommendedModelName && rightPanelMode === "execution" && (
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2 mb-1">
+                    <Activity size={20} className="text-blue-800" />
+                    <h3 className="text-2xl text-blue-800 font-bold">
+                      Model execution
+                    </h3>
+                  </div>
+                  <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-blue-800 via-blue-500 to-transparent"></div>
+
+                  <div className="flex-1 overflow-y-auto pr-2">
+                    <ModelExecuteProcess
+                      isRunning={isRunning || modelTaskStatus === "running"}
+                      taskStatus={modelTaskStatus}
+                      result={modelRunResult}
+                      error={modelRunError}
+                      modelName={recommendedModelName}
+                      workflow={workflow}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* 输入态：显示输入表单和 Run 按钮 */}
+              {recommendedModelName && rightPanelMode === "form" && (
                 <div className="flex-1 custom-scrollbar mb-8">
                   <div className="mb-4">
                     <div className="flex items-center space-x-2 mb-1">
@@ -1072,9 +1366,26 @@ export default function IntelligentDecision() {
                     </div>
                     <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-blue-800 via-blue-500 to-transparent"></div>
 
-                    <p className="text-xl text-blue-800 font-extrabold">
-                      {recommendedModelName}
-                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xl text-blue-800 font-extrabold">
+                        {recommendedModelName}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleToggleRecommendedModelFavorite}
+                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                          isRecommendedModelFavorited
+                            ? "border-rose-300 bg-rose-50 text-rose-600"
+                            : "border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
+                        }`}
+                      >
+                        <Heart
+                          size={14}
+                          className={isRecommendedModelFavorited ? "fill-rose-500 text-rose-500" : "text-blue-700"}
+                        />
+                        {isRecommendedModelFavorited ? "已收藏" : "收藏模型"}
+                      </button>
+                    </div>
                     <p className="text-sm text-gray-600 mt-1">
                       {recommendedModelDesc}
                     </p>
@@ -1194,7 +1505,9 @@ export default function IntelligentDecision() {
                                                     // 先移除同一inputName的旧文件，再添加新的
                                                     setUploadedFiles((prev) => [
                                                       ...prev.filter(
-                                                        (f) => f.inputName !== input.name
+                                                        (f) =>
+                                                          f.inputName !==
+                                                          input.name,
                                                       ),
                                                       {
                                                         name: file.name,
@@ -1253,13 +1566,14 @@ export default function IntelligentDecision() {
                     ))}
                   </div>
 
-                  <div className="space-y-2 mt-2">
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* 扫描按钮 */}
                     <button
                       disabled={uploadedFiles.length === 0 || isScanning}
                       onClick={handleBatchScan}
-                      className="w-full py-3 bg-amber-300 hover:bg-amber-500 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
+                      className="w-full py-3 bg-linear-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-xl font-semibold shadow-md disabled:from-gray-300 disabled:to-gray-300 disabled:text-gray-500 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-sm"
                     >
+                      <ScanSearch size={16} />
                       {isScanning
                         ? "Scanning..."
                         : `Scan (${uploadedFiles.length})`}
@@ -1268,27 +1582,11 @@ export default function IntelligentDecision() {
                     <button
                       disabled={!isAllInputsFilled()}
                       onClick={handleRun}
-                      className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-lg disabled:bg-gray-300 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-base"
+                      className="w-full py-3 bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-semibold shadow-md disabled:from-gray-300 disabled:to-gray-300 disabled:text-gray-500 disabled:shadow-none transition-all flex items-center justify-center gap-2 text-sm"
                     >
+                      <Play size={16} />
                       Run
                     </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Now, LLM has recommend the most suitable model, and user has uploaded data */}
-              {recommendedModelName && isRunning && (
-                <div className="space-y-3">
-                  <div className="w-full flex items-center space-x-2">
-                    <Activity size={20} className="text-blue-800" />
-                    <h3 className="text-3xl text-blue-800 font-bold">
-                      Model execution process
-                    </h3>
-                  </div>
-                  <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-gray-900 via-gray-500 to-transparent"></div>
-
-                  <div className="flex-1 overflow-y-auto pr-2">
-                    <ModelExecuteProcess status={runStatus} />
                   </div>
                 </div>
               )}
@@ -1420,8 +1718,12 @@ export default function IntelligentDecision() {
                             <p className="text-[13px] font-semibold text-red-700">
                               (Overall Score:
                               <span className="font-semibold text-red-700">
-                                {(alignmentResult.overall_score * 100).toFixed(0,)}%
-                              </span>)
+                                {(alignmentResult.overall_score * 100).toFixed(
+                                  0,
+                                )}
+                                %
+                              </span>
+                              )
                             </p>
                           )}
                         </div>
@@ -1474,8 +1776,12 @@ export default function IntelligentDecision() {
                         </p>
                       )}
 
-                      {isNoGoAlignment && Array.isArray(alignmentResult.suggested_transformations) &&
-                        alignmentResult.suggested_transformations.length > 0 && (
+                      {isNoGoAlignment &&
+                        Array.isArray(
+                          alignmentResult.suggested_transformations,
+                        ) &&
+                        alignmentResult.suggested_transformations.length >
+                          0 && (
                           <div>
                             <p className="text-xs font-semibold text-gray-700 mb-1">
                               Suggested Transformations

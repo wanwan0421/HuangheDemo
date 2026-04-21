@@ -111,7 +111,9 @@ export default function Layout() {
             </button>
 
             {/* Avatar */}
-            <img src={user} alt="avatar" className="w-8 h-8 rounded-full ml-3" />
+            <Link to="/profile" className="ml-3 inline-flex" title="User Center">
+              <img src={user} alt="avatar" className="w-8 h-8 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition" />
+            </Link>
           </div>
         </nav>
 
@@ -161,7 +163,9 @@ export default function Layout() {
                 <span className="text-base">{darkMode ? '🌙' : '☀️'}</span>
               </button>
               {/* Avatar */}
-              <img src={user} className="w-10 h-10 rounded-full" />
+              <Link to="/profile" onClick={() => setMobileOpen(false)} className="inline-flex" title="User Center">
+                <img src={user} alt="avatar" className="w-10 h-10 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition" />
+              </Link>
             </div>
           </div>
         </div>

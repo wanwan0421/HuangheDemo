@@ -5,6 +5,7 @@ import About from './pages/About';
 import Index from './pages/Index';
 import Resources from './pages/Resources';
 import Decision from './pages/Decision';
+import Profile from './pages/Profile';
 // import Decision from './pages/Decision copy';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
           <Route path='/resources' element={<Resources />} />
           <Route path="/index" element={<Index />} />
           <Route path="/decision" element={<Decision />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/about" element={<About />} />
         </Route>
       </Routes>
