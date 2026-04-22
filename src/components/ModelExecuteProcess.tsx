@@ -1,9 +1,9 @@
 import React from "react";
-import { CheckCircle, Loader, AlertCircle, Download, MapPinned, Package, Heart } from "lucide-react";
+import { CheckCircle, Loader, AlertCircle, Download, MapPinned, Package } from "lucide-react";
 import { motion } from "framer-motion";
 import MapboxViewer from "./mapbox";
 import type { WorkflowState } from "../types";
-import { addSimulationResult, getFavoriteData, toggleFavoriteData, type FavoriteData } from "../lib/userCenter.ts";
+import { addSimulationResult } from "../lib/userCenter.ts";
 
 interface ModelExecuteProcessProps {
     isRunning: boolean;
@@ -23,24 +23,6 @@ const ModelExecuteProcess: React.FC<ModelExecuteProcessProps> = ({
     workflow,
 }) => {
     const [mapPreviewData, setMapPreviewData] = React.useState<any[]>([]);
-    const [favoriteDataNames, setFavoriteDataNames] = React.useState<Set<string>>(new Set());
-
-    React.useEffect(() => {
-        let cancelled = false;
-        getFavoriteData()
-            .then((favorites: FavoriteData[]) => {
-                if (!cancelled) {
-                    setFavoriteDataNames(new Set(favorites.map((item: FavoriteData) => item.name)));
-                }
-            })
-            .catch(() => {
-                if (!cancelled) setFavoriteDataNames(new Set());
-            });
-
-        return () => {
-            cancelled = true;
-        };
-    }, []);
 
     const outputs = React.useMemo(() => {
         if (!result) return [];
@@ -63,9 +45,9 @@ const ModelExecuteProcess: React.FC<ModelExecuteProcessProps> = ({
         (output: any, idx: number) => {
             if (output?.name) return output.name;
             const flowName = workflowNames[idx] || `Output-${idx + 1}`;
-            return `${modelName || "Model"}-${flowName}`;
+            return flowName;
         },
-        [modelName, workflowNames],
+        [workflowNames],
     );
 
     const isZipLike = (url: string) => /\.(zip|rar|7z|tar|gz)(\?|$)/i.test(url);
@@ -224,18 +206,6 @@ const ModelExecuteProcess: React.FC<ModelExecuteProcessProps> = ({
         }
     };
 
-    const handleToggleFavoriteData = async (row: any) => {
-        const favorited = await toggleFavoriteData({
-            name: row.name,
-            source: "model-result",
-            fromModel: row.model,
-        });
-
-        const favorites = await getFavoriteData();
-        setFavoriteDataNames(new Set(favorites.map((item: FavoriteData) => item.name)));
-        alert(favorited ? `已收藏数据：${row.name}` : `已取消收藏数据：${row.name}`);
-    };
-
     const activeMapData = mapPreviewData;
 
     // 运行中状态
@@ -251,7 +221,7 @@ const ModelExecuteProcess: React.FC<ModelExecuteProcessProps> = ({
                     </motion.div>
                     <div>
                         <p className="text-base font-semibold text-blue-700">Model task is running</p>
-                        <p className="text-sm text-blue-600">The task has been published. Waiting for backend result...</p>
+                        <p className="text-sm text-blue-600">The task has been published. Waiting for result...</p>
                     </div>
                 </div>
             </div>
@@ -284,19 +254,13 @@ const ModelExecuteProcess: React.FC<ModelExecuteProcessProps> = ({
                             {modelName || "Model"}
                         </p>
                     </div>
-                    <div className="flex items-center gap-2 text-green-700">
+                    <div className="flex items-center gap-2 text-green-600">
                         <CheckCircle size={18} />
-                        <span className="text-sm font-semibold">成功计算</span>
+                        <span className="text-sm font-semibold">计算成功</span>
                     </div>
                 </div>
 
                 <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-                    <div className="grid grid-cols-8 bg-slate-50 text-xs font-semibold text-slate-600 border-b">
-                        <div className="col-span-2 px-3 py-2">Event</div>
-                        <div className="col-span-3 px-3 py-2">Name</div>
-                        <div className="col-span-3 px-3 py-2">Actions</div>
-                    </div>
-
                     {groupedOutputRows.length > 0 ? (
                         groupedOutputRows.map((group) => (
                             <div key={group.stateName} className="border-b last:border-b-0">
@@ -305,9 +269,8 @@ const ModelExecuteProcess: React.FC<ModelExecuteProcessProps> = ({
                                 </div>
 
                                 {group.rows.map((row: any) => (
-                                    <div key={row.id} className="grid grid-cols-8 items-center border-t text-sm">
+                                    <div key={row.id} className="grid grid-cols-5 items-center border-t text-sm">
                                         <div className="col-span-2 px-3 py-2 text-gray-600 truncate">{row.eventName}</div>
-                                        <div className="col-span-3 px-3 py-2 text-gray-700 truncate">{row.name}</div>
                                         <div className="col-span-3 px-3 py-2">
                                             <div className="flex items-center gap-2 justify-start md:justify-end">
                                                 <a
@@ -323,18 +286,6 @@ const ModelExecuteProcess: React.FC<ModelExecuteProcessProps> = ({
                                                     className="px-2 py-1 rounded-full text-xs bg-cyan-500 text-white"
                                                 >
                                                     将结果添加到我的数据
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleToggleFavoriteData(row)}
-                                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs border ${
-                                                        favoriteDataNames.has(row.name)
-                                                            ? "border-rose-300 bg-rose-50 text-rose-600"
-                                                            : "border-slate-300 bg-white text-slate-600"
-                                                    }`}
-                                                >
-                                                    <Heart size={12} className={favoriteDataNames.has(row.name) ? "fill-rose-500 text-rose-500" : "text-slate-500"} />
-                                                    {favoriteDataNames.has(row.name) ? "已收藏数据" : "收藏数据"}
                                                 </button>
                                             </div>
                                         </div>

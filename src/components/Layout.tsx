@@ -12,22 +12,6 @@ const navItems = [
   { key: '/about', label: 'About', to: '/about' },
 ];
 
-// Helper function to create Breadcrumb items (similar logic as before)
-interface BreadcrumbItem {
-  title: string;
-  isLast: boolean;
-}
-
-const getBreadcrumbItems = (pathname: string): BreadcrumbItem[] => {
-  return pathname
-    .split('/')
-    .filter(Boolean)
-    .map((path, index, array) => ({
-      title: path.charAt(0).toUpperCase() + path.slice(1),
-      isLast: index === array.length - 1,
-    }));
-};
-
 export default function Layout() {
   const location = useLocation();
   const [darkMode, setDarkMode] = useState(true);
@@ -35,7 +19,14 @@ export default function Layout() {
 
   // Determine the current path for active link highlighting
   const currentPath = location.pathname;
-  const showFooter = currentPath !== '/decision';
+  const showFooter = !currentPath.startsWith('/decision');
+
+  const isNavItemActive = (itemKey: string) => {
+    if (itemKey === '/decision') {
+      return currentPath.startsWith('/decision');
+    }
+    return currentPath === itemKey;
+  };
 
   // Tailwind classes for theme-dependent background and text color
   const themeBg = darkMode ? 'bg-black text-white' : 'bg-white text-gray-800';
@@ -82,7 +73,7 @@ export default function Layout() {
               <Link
                 key={item.key}
                 to={item.to}
-                className={`text-sm font-medium whitespace-nowrap ${currentPath === item.key
+                className={`text-sm font-medium whitespace-nowrap ${isNavItemActive(item.key)
                   ? 'text-blue-500! border-b-2 border-blue-500 pb-1 font-semibold'
                   : darkMode
                     ? 'text-gray-300 hover:text-white'
@@ -138,7 +129,7 @@ export default function Layout() {
                   key={item.key}
                   to={item.to}
                   onClick={() => setMobileOpen(false)}
-                  className={`block py-2 text-base ${currentPath === item.key
+                  className={`block py-2 text-base ${isNavItemActive(item.key)
                     ? 'text-blue-500! font-semibold'
                     : darkMode
                       ? 'text-gray-300 hover:text-white'
@@ -173,12 +164,6 @@ export default function Layout() {
 
       {/* Content area */}
       <main>
-        {/* Breadcrumb (simplified with Tailwind) */}
-        {getBreadcrumbItems(currentPath).map((item, index) => (
-          <li key={index} className="flex items-center">
-            {!item.isLast && <span className="mx-2">/</span>}
-          </li>
-        ))}
         {/* Router area */}
           <Outlet context={{ darkMode }}/>
       </main>

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useNavigate, useParams } from "react-router-dom";
 import ChatInput from "../components/ChatInput";
 import { Earth, SquarePen, Search, Sparkles, Activity, MoreVertical, Info, Copy, Check, ScanSearch, Play, Columns2, Heart } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -15,8 +16,55 @@ import { isModelFavorited, toggleFavoriteModel } from "../lib/userCenter.ts";
 
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
+const DECISION_SESSION_STATE_STORAGE_KEY = "geoagent_decision_session_state";
+
+type DecisionSessionState = {
+  recommendedModelName: string | null;
+  recommendedModelDesc: string | null;
+  workflow: WorkflowState[];
+  currentTaskSpec: any | null;
+  modelContract: any | null;
+  modelTaskId: string | null;
+  modelTaskStatus: string;
+  modelRunResult: any | null;
+  modelRunError: string | null;
+  rightPanelMode: "form" | "execution";
+  uploadedData: Record<string, string>;
+};
+
+const loadDecisionSessionStates = (): Record<string, DecisionSessionState> => {
+  try {
+    const raw = localStorage.getItem(DECISION_SESSION_STATE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const persistDecisionSessionState = (sessionId: string, state: DecisionSessionState) => {
+  try {
+    const allStates = loadDecisionSessionStates();
+    allStates[sessionId] = state;
+    localStorage.setItem(DECISION_SESSION_STATE_STORAGE_KEY, JSON.stringify(allStates));
+  } catch (error) {
+    console.error("Persist decision session state failed", error);
+  }
+};
+
+const sanitizeUploadedData = (data: Record<string, File | string | number | null>) => {
+  return Object.fromEntries(
+    Object.entries(data)
+      .filter(([, value]) => typeof value === "string" || typeof value === "number")
+      .map(([key, value]) => [key, String(value)]),
+  ) as Record<string, string>;
+};
 
 export default function IntelligentDecision() {
+  const navigate = useNavigate();
+  const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
+
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
@@ -72,6 +120,7 @@ export default function IntelligentDecision() {
   const [modelRunError, setModelRunError] = useState<string | null>(null);
   const [rightPanelMode, setRightPanelMode] = useState<"form" | "execution">("form");
   const statusCheckIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const isHydratingSessionRef = React.useRef(false);
 
   // 设置对话列表状态
   const [sessionList, setSessionList] = useState<any[]>([]);
@@ -234,15 +283,36 @@ export default function IntelligentDecision() {
     // 如果没有ID或者是发送消息时自动设置的ID，则不触发历史加载
     if (!activeChatId || !isManualSwitch.current) return;
 
+    isHydratingSessionRef.current = true;
     resetToInitialState(true);
 
     const currentSession = sessionList.find((s) => s._id === activeChatId);
+    const persistedState = loadDecisionSessionStates()[activeChatId];
+
     if (currentSession?.recommendedModel) {
       setRecommendedModelName(currentSession.recommendedModel.name);
       setRecommendedModelDesc(currentSession.recommendedModel.description);
       setWorkflow(currentSession.recommendedModel.workflow);
       setCurrentTaskSpec(currentSession.taskSpec || null);
       setModelContract(currentSession.modelContract || null);
+    }
+
+    if (persistedState) {
+      setRecommendedModelName(persistedState.recommendedModelName);
+      setRecommendedModelDesc(persistedState.recommendedModelDesc);
+      setWorkflow(persistedState.workflow || []);
+      setCurrentTaskSpec(persistedState.currentTaskSpec || null);
+      setModelContract(persistedState.modelContract || null);
+      setModelTaskId(persistedState.modelTaskId || null);
+      setModelTaskStatus(persistedState.modelTaskStatus || "idle");
+      setModelRunResult(persistedState.modelRunResult || null);
+      setModelRunError(persistedState.modelRunError || null);
+      setRightPanelMode(persistedState.rightPanelMode || "form");
+      setUploadedData((prev) => ({
+        ...prev,
+        ...(persistedState.uploadedData || {}),
+      }));
+      setIsRunning(persistedState.modelTaskStatus === "running");
     }
 
     // 调用后端获取历史消息的接口
@@ -303,8 +373,60 @@ export default function IntelligentDecision() {
       })
       .catch((err) => {
         console.error("Failed to fetch chat history:", err);
+      })
+      .finally(() => {
+        isHydratingSessionRef.current = false;
+
+        if (persistedState?.modelTaskId && persistedState.modelTaskStatus === "running") {
+          pollTaskStatus(persistedState.modelTaskId);
+          if (statusCheckIntervalRef.current) {
+            clearInterval(statusCheckIntervalRef.current);
+          }
+          statusCheckIntervalRef.current = setInterval(() => {
+            pollTaskStatus(persistedState.modelTaskId as string);
+          }, 2000);
+        }
+
+        if (
+          persistedState?.modelTaskId &&
+          persistedState.modelTaskStatus === "completed" &&
+          !persistedState.modelRunResult
+        ) {
+          pollTaskStatus(persistedState.modelTaskId);
+        }
       });
   }, [activeChatId]);
+
+  React.useEffect(() => {
+    if (!activeChatId || isHydratingSessionRef.current) return;
+
+    persistDecisionSessionState(activeChatId, {
+      recommendedModelName,
+      recommendedModelDesc,
+      workflow,
+      currentTaskSpec,
+      modelContract,
+      modelTaskId,
+      modelTaskStatus,
+      modelRunResult,
+      modelRunError,
+      rightPanelMode,
+      uploadedData: sanitizeUploadedData(uploadedData),
+    });
+  }, [
+    activeChatId,
+    recommendedModelName,
+    recommendedModelDesc,
+    workflow,
+    currentTaskSpec,
+    modelContract,
+    modelTaskId,
+    modelTaskStatus,
+    modelRunResult,
+    modelRunError,
+    rightPanelMode,
+    uploadedData,
+  ]);
 
   // 初始化获取用户所有的历史对话
   React.useEffect(() => {
@@ -327,6 +449,21 @@ export default function IntelligentDecision() {
     window.addEventListener("click", handleClickOutside);
     return () => window.removeEventListener("click", handleClickOutside);
   }, []);
+
+  React.useEffect(() => {
+    if (!routeSessionId) {
+      if (activeChatId) {
+        setActiveChatId(null);
+        isManualSwitch.current = false;
+      }
+      return;
+    }
+
+    if (routeSessionId !== activeChatId) {
+      isManualSwitch.current = true;
+      setActiveChatId(routeSessionId);
+    }
+  }, [routeSessionId, activeChatId]);
 
   // 重命名会话
   const handleRenameSession = async (
@@ -368,6 +505,7 @@ export default function IntelligentDecision() {
     setSessionList((p) => p.filter((s) => s._id !== sessionId));
     if (activeChatId === sessionId) {
       resetToInitialState(false);
+      navigate("/decision");
     }
 
     try {
@@ -397,6 +535,7 @@ export default function IntelligentDecision() {
         if (data.success && data.data._id) {
           currentSessionId = data.data._id;
           setActiveChatId(currentSessionId);
+          navigate(`/decision/${currentSessionId}`);
           // 更新左侧对话列表
           setSessionList((prev) => [data.data, ...prev]);
         } else {
@@ -862,6 +1001,11 @@ export default function IntelligentDecision() {
 
   // 更新当前模型输入数据
   const handleInputChange = async(name: string, value: string) => {
+    setUploadedData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+
     const updates = {
       [`context.${name}`]: value,
     };
@@ -952,6 +1096,7 @@ export default function IntelligentDecision() {
           if (resultData.success) {
             // 后端约定：输出在 data.result 中（每项包含 url）
             setModelRunResult(resultData.data ?? null);
+            setRightPanelMode("execution");
           } else {
             throw new Error(resultData.message || "Failed to get result");
           }
@@ -1043,10 +1188,26 @@ export default function IntelligentDecision() {
         throw new Error("No taskId returned from backend");
       }
 
-      console.log("Model task published, taskId:", taskId);
       setModelTaskId(taskId);
       setModelTaskStatus('running');
       setIsRunning(false);
+      setRightPanelMode("execution");
+
+      if (activeChatId) {
+        persistDecisionSessionState(activeChatId, {
+          recommendedModelName,
+          recommendedModelDesc,
+          workflow,
+          currentTaskSpec,
+          modelContract,
+          modelTaskId: taskId,
+          modelTaskStatus: "running",
+          modelRunResult: null,
+          modelRunError: null,
+          rightPanelMode: "execution",
+          uploadedData: sanitizeUploadedData(uploadedData),
+        });
+      }
 
       // 先立即检查一次，避免已经完成但UI还在等待
       pollTaskStatus(taskId);
@@ -1063,6 +1224,22 @@ export default function IntelligentDecision() {
       setModelRunError(error instanceof Error ? error.message : "Task publish failed, please retry.");
       setIsRunning(false);
       setModelTaskStatus('failed');
+
+      if (activeChatId) {
+        persistDecisionSessionState(activeChatId, {
+          recommendedModelName,
+          recommendedModelDesc,
+          workflow,
+          currentTaskSpec,
+          modelContract,
+          modelTaskId: null,
+          modelTaskStatus: "failed",
+          modelRunResult: null,
+          modelRunError: error instanceof Error ? error.message : "Task publish failed, please retry.",
+          rightPanelMode: "execution",
+          uploadedData: sanitizeUploadedData(uploadedData),
+        });
+      }
     }
   };
 
@@ -1073,7 +1250,10 @@ export default function IntelligentDecision() {
         <div className="mb-5 space-y-2">
           <button
             className="w-full py-2 px-2 rounded-lg flex items-center gap-2 hover:bg-gray-700 transition"
-            onClick={() => resetToInitialState(false)}
+            onClick={() => {
+              resetToInitialState(false);
+              navigate("/decision");
+            }}
           >
             <SquarePen size={20} />
             <span className="text-base">New Chat</span>
@@ -1088,7 +1268,7 @@ export default function IntelligentDecision() {
         <h3 className="font-bold text-base text-gray-200 mb-2 px-2">
           Historical Records
         </h3>
-        <div className="flex-1 overflow-y-auto space-y-2 pr-1 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-800 [&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1 [scrollbar-color:#4b5563_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-800 [&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
           {sessionList.map((session) => {
             const isActive = activeChatId === session._id;
             const isMenuOpen = openSessionMenuId === session._id;
@@ -1107,6 +1287,7 @@ export default function IntelligentDecision() {
                   onClick={() => {
                     isManualSwitch.current = true;
                     setActiveChatId(session._id);
+                    navigate(`/decision/${session._id}`);
                     setOpenSessionMenuId(null);
                   }}
                 >
@@ -1540,17 +1721,24 @@ export default function IntelligentDecision() {
                                           <input
                                             className="w-full text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 transition-colors text-black"
                                             placeholder="Please enter the input data..."
+                                            value={
+                                              typeof value === "string" ||
+                                              typeof value === "number"
+                                                ? String(value)
+                                                : ""
+                                            }
+                                            onChange={(e) => {
+                                              const nextValue = e.target.value;
+                                              setUploadedData((p) => ({
+                                                ...p,
+                                                [input.name]: nextValue,
+                                              }));
+                                            }}
                                             onBlur={(e) => {
-                                              if (e.target.value) {
-                                                setUploadedData((p) => ({
-                                                  ...p,
-                                                  [input.name]: e.target.value,
-                                                }));
-                                                handleInputChange(
-                                                  input.name,
-                                                  e.target.value,
-                                                );
-                                              }
+                                              handleInputChange(
+                                                input.name,
+                                                e.target.value,
+                                              );
                                             }}
                                           />
                                         )}

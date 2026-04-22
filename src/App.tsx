@@ -16,7 +16,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path='/resources' element={<Resources />} />
           <Route path="/index" element={<Index />} />
-          <Route path="/decision" element={<Decision />} />
+          <Route path="/decision/:sessionId?" element={<Decision />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/about" element={<About />} />
         </Route>
