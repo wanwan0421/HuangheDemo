@@ -29,7 +29,6 @@ type DecisionSessionState = {
   modelRunResult: any | null;
   modelRunError: string | null;
   rightPanelMode: "form" | "execution";
-  uploadedData: Record<string, string>;
 };
 
 const loadDecisionSessionStates = (): Record<string, DecisionSessionState> => {
@@ -51,14 +50,6 @@ const persistDecisionSessionState = (sessionId: string, state: DecisionSessionSt
   } catch (error) {
     console.error("Persist decision session state failed", error);
   }
-};
-
-const sanitizeUploadedData = (data: Record<string, File | string | number | null>) => {
-  return Object.fromEntries(
-    Object.entries(data)
-      .filter(([, value]) => typeof value === "string" || typeof value === "number")
-      .map(([key, value]) => [key, String(value)]),
-  ) as Record<string, string>;
 };
 
 export default function IntelligentDecision() {
@@ -308,12 +299,15 @@ export default function IntelligentDecision() {
       setModelRunResult(persistedState.modelRunResult || null);
       setModelRunError(persistedState.modelRunError || null);
       setRightPanelMode(persistedState.rightPanelMode || "form");
-      setUploadedData((prev) => ({
-        ...prev,
-        ...(persistedState.uploadedData || {}),
-      }));
       setIsRunning(persistedState.modelTaskStatus === "running");
     }
+
+    // 模型输入参数只在当前连续对话流程中保留，不跨会话与刷新恢复。
+    setUploadedData({});
+    setUploadedFiles([]);
+    setConvertedData({});
+    setScanResults({});
+    setAlignmentResult(null);
 
     // 调用后端获取历史消息的接口
     fetch(`${BACK_URL}/chat/sessions/${activeChatId}/messages`)
@@ -411,7 +405,6 @@ export default function IntelligentDecision() {
       modelRunResult,
       modelRunError,
       rightPanelMode,
-      uploadedData: sanitizeUploadedData(uploadedData),
     });
   }, [
     activeChatId,
@@ -425,7 +418,6 @@ export default function IntelligentDecision() {
     modelRunResult,
     modelRunError,
     rightPanelMode,
-    uploadedData,
   ]);
 
   // 初始化获取用户所有的历史对话
@@ -1205,7 +1197,6 @@ export default function IntelligentDecision() {
           modelRunResult: null,
           modelRunError: null,
           rightPanelMode: "execution",
-          uploadedData: sanitizeUploadedData(uploadedData),
         });
       }
 
@@ -1237,7 +1228,6 @@ export default function IntelligentDecision() {
           modelRunResult: null,
           modelRunError: error instanceof Error ? error.message : "Task publish failed, please retry.",
           rightPanelMode: "execution",
-          uploadedData: sanitizeUploadedData(uploadedData),
         });
       }
     }
@@ -1268,7 +1258,8 @@ export default function IntelligentDecision() {
         <h3 className="font-bold text-base text-gray-200 mb-2 px-2">
           Historical Records
         </h3>
-        <div className="flex-1 overflow-y-auto space-y-2 pr-1 [scrollbar-color:#4b5563_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-800 [&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1
+          [scrollbar-color:transparent_transparent] hover:[scrollbar-color:#4b5563_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-800 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
           {sessionList.map((session) => {
             const isActive = activeChatId === session._id;
             const isMenuOpen = openSessionMenuId === session._id;
