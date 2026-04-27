@@ -6,7 +6,7 @@ export type AuthUser = {
 };
 
 const AUTH_SESSION_KEY = "geoagent_auth_session";
-const BACK_URL = import.meta.env.VITE_BACK_URL ?? "";
+const BACK_URL = import.meta.env.VITE_BACK_URL;
 const AUTH_BASE_URL =`${BACK_URL}/auth`;
 
 type AuthResult = {
@@ -57,10 +57,10 @@ const writeSessionUser = (user: AuthUser | null) => {
 const toAuthUser = (raw: any): AuthUser | null => {
   if (!raw || typeof raw !== "object") return null;
 
-  const id = String(raw.id ?? raw._id ?? raw.userId ?? "").trim();
-  const username = String(raw.username ?? raw.name ?? "").trim();
-  const email = String(raw.email ?? "").trim();
-  const createdAt = String(raw.createdAt ?? raw.created_at ?? "").trim();
+  const id = String(raw.id ?? raw._id).trim();
+  const username = String(raw.username).trim();
+  const email = String(raw.email).trim();
+  const createdAt = String(raw.createdAt).trim();
 
   if (!id || !email) return null;
 
@@ -180,7 +180,8 @@ export const fetchCurrentUser = async (): Promise<AuthUser | null> => {
     writeSessionUser(user);
     return user;
   } catch {
-    return readSessionUser();
+    writeSessionUser(null);
+    return null;
   }
 };
 

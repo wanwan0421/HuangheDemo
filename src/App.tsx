@@ -17,7 +17,14 @@ function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
           <Route path='/resources' element={<Resources />} />
-          <Route path="/decision/:sessionId?" element={<Decision />} />
+          <Route
+            path="/decision/:sessionId?"
+            element={
+              <ProtectedRoute>
+                <Decision />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />

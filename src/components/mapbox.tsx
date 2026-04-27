@@ -232,7 +232,7 @@ export default function MapboxViewer({ geoJsonDataArray }: MapboxViewerProps) {
     }
   };
 
-  const addRasterLayer = async (fileData: any, index: number, fileName: string) => {
+  const addRasterLayer = async (fileData: any, index: number, _fileName: string) => {
     if (!map.current || !fileData?.fileUrl) return;
 
     const sourceId = `raster-source-${index}`;

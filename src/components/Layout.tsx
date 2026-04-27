@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
 import logo from '../assets/logo.png';
-import user from '../assets/user.png';
+import defaultAvatar from '../assets/user.png';
 import { fetchCurrentUser, getCurrentUser, logout } from '../lib/auth';
+import { getUserProfile } from '../lib/userCenter';
 
 // Navigation items structure remains the same
 const navItems = [
@@ -18,20 +19,24 @@ export default function Layout() {
   const [darkMode, setDarkMode] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [authUser, setAuthUser] = useState(getCurrentUser());
+  const [avatar, setAvatar] = useState(getUserProfile().avatar || defaultAvatar);
 
   useEffect(() => {
     let cancelled = false;
     setAuthUser(getCurrentUser());
+    setAvatar(getUserProfile().avatar || defaultAvatar);
 
     fetchCurrentUser()
-      .then((user) => {
+      .then((currentUser) => {
         if (!cancelled) {
-          setAuthUser(user);
+          setAuthUser(currentUser);
+          setAvatar(getUserProfile().avatar || defaultAvatar);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setAuthUser(getCurrentUser());
+          setAvatar(getUserProfile().avatar || defaultAvatar);
         }
       });
 
@@ -137,7 +142,7 @@ export default function Layout() {
               {authUser ? (
                 <>
                   <Link to="/profile" className="inline-flex" title="User Center">
-                    <img src={user} alt="avatar" className="w-8 h-8 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition" />
+                    <img src={avatar} alt="avatar" className="w-8 h-8 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition object-cover" />
                   </Link>
                   <button
                     type="button"
@@ -209,7 +214,7 @@ export default function Layout() {
               {authUser ? (
                 <div className="flex items-center gap-3">
                   <Link to="/profile" onClick={() => setMobileOpen(false)} className="inline-flex" title="User Center">
-                    <img src={user} alt="avatar" className="w-10 h-10 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition" />
+                    <img src={avatar} alt="avatar" className="w-10 h-10 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition object-cover" />
                   </Link>
                   <button
                     type="button"

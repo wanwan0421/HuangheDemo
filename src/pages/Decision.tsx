@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useNavigate, useParams } from "react-router-dom";
 import ChatInput from "../components/ChatInput";
-import { Earth, SquarePen, Search, Sparkles, Activity, MoreVertical, Info, Copy, Check, ScanSearch, Play, Columns2, Heart } from "lucide-react";
+import { Earth, SquarePen, Search, Sparkles, Activity, MoreVertical, Info, Copy, Check, ScanSearch, Play, Columns2, Heart, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ModelExecuteProcess from "../components/ModelExecuteProcess";
 import ToolTimeline from "../components/ToolTimeline";
@@ -17,6 +17,81 @@ import { isModelFavorited, toggleFavoriteModel } from "../lib/userCenter.ts";
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
 const DECISION_SESSION_STATE_STORAGE_KEY = "geoagent_decision_session_state";
+
+const authFetch = (input: RequestInfo | URL, init?: RequestInit) => {
+  return fetch(input, {
+    ...init,
+    credentials: init?.credentials ?? "include",
+  });
+};
+
+const TOOL_TITLE_MAP: Record<string, string> = {
+  search_relevant_indices: "指标库检索完成",
+  search_relevant_models: "模型库检索完成",
+  search_most_model: "模型推荐完成",
+  get_model_details: "详情读取完成",
+  tool_prepare_file: "数据准备完成",
+  tool_detect_format: "数据格式检测完成",
+  tool_analyze_raster: "栅格数据分析完成",
+  tool_analyze_vector: "矢量数据分析完成",
+  tool_analyze_table: "表格数据分析完成",
+  tool_analyze_timeseries: "时间序列数据分析完成",
+  tool_analyze_parameter: "参数数据分析完成",
+};
+
+const getPayloadToolKind = (payload: any): string => {
+  return String(payload?.tool ?? payload?.name ?? payload?.tool_name ?? "").trim();
+};
+
+const normalizeMessageText = (raw: any): string => {
+  if (typeof raw === "string") return raw;
+
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          if (typeof item.text === "string") return item.text;
+          if (typeof item.content === "string") return item.content;
+          if (typeof item.value === "string") return item.value;
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  if (raw && typeof raw === "object") {
+    if (typeof raw.text === "string") return raw.text;
+    if (typeof raw.content === "string") return raw.content;
+  }
+
+  return "";
+};
+
+const normalizeHistoryTools = (message: any): NonNullable<Message["tools"]> => {
+  const source = Array.isArray(message?.tools)
+    ? message.tools
+    : Array.isArray(message?.tool_calls)
+      ? message.tool_calls
+      : Array.isArray(message?.toolCalls)
+        ? message.toolCalls
+        : [];
+
+  return source.map((tool: any) => {
+    const kind = String(tool?.tool ?? tool?.name ?? tool?.kind ?? "").trim();
+    const statusRaw = String(tool?.status ?? "success").toLowerCase();
+    const status = statusRaw === "running" || statusRaw === "error" ? statusRaw : "success";
+
+    return {
+      id: String(tool?.id ?? crypto.randomUUID()),
+      kind: (kind || "search_relevant_models") as any,
+      status,
+      title: TOOL_TITLE_MAP[kind] ?? tool?.title ?? "工具执行完成",
+      result: tool?.data ?? tool?.result ?? tool?.profile ?? tool?.output ?? null,
+    };
+  });
+};
 
 type DecisionSessionState = {
   recommendedModelName: string | null;
@@ -49,6 +124,17 @@ const persistDecisionSessionState = (sessionId: string, state: DecisionSessionSt
     localStorage.setItem(DECISION_SESSION_STATE_STORAGE_KEY, JSON.stringify(allStates));
   } catch (error) {
     console.error("Persist decision session state failed", error);
+  }
+};
+
+const removeDecisionSessionState = (sessionId: string) => {
+  try {
+    const allStates = loadDecisionSessionStates();
+    if (!(sessionId in allStates)) return;
+    delete allStates[sessionId];
+    localStorage.setItem(DECISION_SESSION_STATE_STORAGE_KEY, JSON.stringify(allStates));
+  } catch (error) {
+    console.error("Remove decision session state failed", error);
   }
 };
 
@@ -109,6 +195,9 @@ export default function IntelligentDecision() {
   const [modelTaskStatus, setModelTaskStatus] = useState<string>('idle'); // idle, running, completed, failed
   const [modelRunResult, setModelRunResult] = useState<any | null>(null);
   const [modelRunError, setModelRunError] = useState<string | null>(null);
+  const [isAgentRunning, setIsAgentRunning] = useState(false);
+  const [agentStatusText, setAgentStatusText] = useState("Agent 正在思考...");
+  const [agentStatusAnchorId, setAgentStatusAnchorId] = useState<string | null>(null);
   const [rightPanelMode, setRightPanelMode] = useState<"form" | "execution">("form");
   const statusCheckIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const isHydratingSessionRef = React.useRef(false);
@@ -118,6 +207,10 @@ export default function IntelligentDecision() {
   const [openSessionMenuId, setOpenSessionMenuId] = useState<string | null>(null,);
   // 记录当前操作是用户从左侧列表点击切换还是发送一条消息时自动创建新对话
   const isManualSwitch = React.useRef(false);
+  // 避免点击 New Chat 时被旧路由参数瞬间回填到原会话
+  const isCreatingNewChat = React.useRef(false);
+  // 发送首条消息自动创建会话时，避免被路由同步误判为手动切换
+  const isAutoSessionBootstrap = React.useRef(false);
 
   // 定义初始状态或使用重置函数
   const resetToInitialState = (keepSessionId: boolean = false) => {
@@ -135,6 +228,9 @@ export default function IntelligentDecision() {
     setCurrentTaskSpec(null);
     setModelContract(null);
     setAlignmentResult(null);
+    setIsAgentRunning(false);
+    setAgentStatusText("Agent 正在思考...");
+    setAgentStatusAnchorId(null);
 
     if (statusCheckIntervalRef.current) {
       clearInterval(statusCheckIntervalRef.current);
@@ -146,13 +242,19 @@ export default function IntelligentDecision() {
     }
   };
 
+  const handleCreateNewChat = () => {
+    isCreatingNewChat.current = true;
+    resetToInitialState(false);
+    navigate("/decision");
+  };
+
   // 聊天窗口自动滚动到底部
   const scrollRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
-        behavior: "smooth",
+        behavior: isHydratingSessionRef.current ? "auto" : "smooth",
       });
     }
   }, [messages]);
@@ -310,55 +412,29 @@ export default function IntelligentDecision() {
     setAlignmentResult(null);
 
     // 调用后端获取历史消息的接口
-    fetch(`${BACK_URL}/chat/sessions/${activeChatId}/messages`)
+    authFetch(`${BACK_URL}/chat/sessions/${activeChatId}/messages`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.data)) {
           const mappedMessages: Message[] = data.data.map((m: any) => {
-            const isAI = m.role !== "user";
-
-            // 转换工具数据格式
-            const mappedTools = Array.isArray(m.tools)
-              ? m.tools.map((t: any) => ({
-                  kind: t.tool,
-                  status: "success" as const,
-                  title:
-                    t.tool === "search_relevant_indices"
-                      ? "指标库检索完成"
-                      : t.tool === "search_relevant_models"
-                        ? "模型库检索完成"
-                        : t.tool === "search_most_model"
-                          ? "模型推荐完成"
-                          : t.tool === "get_model_details"
-                            ? "详情读取完成"
-                            : t.tool === "tool_prepare_file"
-                              ? "数据准备完成"
-                              : t.tool === "tool_detect_format"
-                                ? "数据格式检测完成"
-                                : t.tool === "tool_analyze_raster"
-                                  ? "栅格数据分析完成"
-                                  : t.tool === "tool_analyze_vector"
-                                    ? "矢量数据分析完成"
-                                    : t.tool === "tool_analyze_table"
-                                      ? "表格数据分析完成"
-                                      : t.tool === "tool_analyze_timeseries"
-                                        ? "时间序列数据分析完成"
-                                        : t.tool === "tool_analyze_parameter"
-                                          ? "参数数据分析完成"
-                                          : "工具执行完成",
-                  result: t.data || t.profile,
-                  id: crypto.randomUUID(),
-                }))
-              : [];
+            const role = String(m?.role ?? "").toLowerCase();
+            const isAI = role !== "user" && role !== "human";
+            const mappedTools = normalizeHistoryTools(m);
+            const content =
+              normalizeMessageText(m?.content) ||
+              normalizeMessageText(m?.message) ||
+              normalizeMessageText(m?.answer) ||
+              normalizeMessageText(m?.response);
+            const profile = m?.profile ?? m?.final_profile ?? null;
 
             return {
               id: m._id || crypto.randomUUID(),
               role: isAI ? "AI" : "user",
-              content: m.content || "",
+              content,
               type: mappedTools.length > 0 ? "tool" : "text",
               tools: mappedTools,
-              profile: m.profile || null,
-              isScanFinished: !!m.profile,
+              profile,
+              isScanFinished: !!profile,
               started: true,
             };
           });
@@ -422,7 +498,7 @@ export default function IntelligentDecision() {
 
   // 初始化获取用户所有的历史对话
   React.useEffect(() => {
-    fetch(`${BACK_URL}/chat/sessions`)
+    authFetch(`${BACK_URL}/chat/sessions`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -443,10 +519,29 @@ export default function IntelligentDecision() {
   }, []);
 
   React.useEffect(() => {
+    if (isAutoSessionBootstrap.current) {
+      // 自动创建会话场景不走手动切换逻辑，避免 reset 清掉状态提示
+      if (routeSessionId) {
+        isAutoSessionBootstrap.current = false;
+      }
+      return;
+    }
+
+    if (isCreatingNewChat.current) {
+      // 等路由真正切到 /decision 后再恢复正常路由同步
+      if (!routeSessionId) {
+        if (activeChatId) {
+          setActiveChatId(null);
+        }
+        isManualSwitch.current = false;
+        isCreatingNewChat.current = false;
+      }
+      return;
+    }
+
     if (!routeSessionId) {
       if (activeChatId) {
-        setActiveChatId(null);
-        isManualSwitch.current = false;
+        resetToInitialState(false);
       }
       return;
     }
@@ -475,7 +570,7 @@ export default function IntelligentDecision() {
     );
 
     try {
-      const res = await fetch(`${BACK_URL}/chat/sessions/${sessionId}`, {
+      const res = await authFetch(`${BACK_URL}/chat/sessions/${sessionId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title }),
@@ -495,13 +590,14 @@ export default function IntelligentDecision() {
 
     const prev = sessionList;
     setSessionList((p) => p.filter((s) => s._id !== sessionId));
+    removeDecisionSessionState(sessionId);
     if (activeChatId === sessionId) {
       resetToInitialState(false);
       navigate("/decision");
     }
 
     try {
-      const res = await fetch(`${BACK_URL}/chat/sessions/${sessionId}`, {
+      const res = await authFetch(`${BACK_URL}/chat/sessions/${sessionId}`, {
         method: "DELETE",
       });
       const data = await res.json();
@@ -517,7 +613,7 @@ export default function IntelligentDecision() {
     let currentSessionId = activeChatId;
     if (!currentSessionId) {
       try {
-        const response = await fetch(`${BACK_URL}/chat/sessions`, {
+        const response = await authFetch(`${BACK_URL}/chat/sessions`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title: prompt.slice(0, 20) }),
@@ -526,6 +622,7 @@ export default function IntelligentDecision() {
 
         if (data.success && data.data._id) {
           currentSessionId = data.data._id;
+          isAutoSessionBootstrap.current = true;
           setActiveChatId(currentSessionId);
           navigate(`/decision/${currentSessionId}`);
           // 更新左侧对话列表
@@ -535,14 +632,19 @@ export default function IntelligentDecision() {
         }
       } catch (err) {
         console.error("Error creating new session:", err);
+        setIsAgentRunning(false);
         return;
       }
     }
+
+    setIsAgentRunning(true);
+    setAgentStatusText("Agent 正在理解你的问题...");
 
     // 为每次请求生成独立的 AI 消息
     // 先插入用户消息和一个空的工具消息
     const userMessageId = crypto.randomUUID();
     const toolMessageId = crypto.randomUUID();
+    setAgentStatusAnchorId(toolMessageId);
     setMessages((prev) => [
       ...prev,
       { id: userMessageId, role: "user", content: prompt },
@@ -583,6 +685,61 @@ export default function IntelligentDecision() {
       try {
         const payload = JSON.parse(e.data);
         console.log("SSE Payload:", payload);
+
+        if (payload.type === "tool_call") {
+          setAgentStatusText("Agent 正在调用工具...");
+        } else if (payload.type === "tool_result") {
+          setAgentStatusText("Agent 正在整理工具结果...");
+        } else if (payload.type === "token") {
+          setAgentStatusText("Agent 正在生成回复...");
+        } else if (payload.type === "final") {
+          setIsAgentRunning(false);
+          setAgentStatusText("Agent 已完成");
+          setAgentStatusAnchorId(null);
+        }
+
+        // 这些状态更新不应依赖消息归并逻辑，避免在早返回分支中被跳过
+        if (payload.type === "task_spec_generated") {
+          const taskSpec = payload.data;
+          if (taskSpec && Object.keys(taskSpec).length > 0) {
+            setCurrentTaskSpec(taskSpec);
+          }
+        }
+
+        if (payload.type === "model_contract_generated") {
+          const contract = payload.data?.Required_slots;
+          if (contract && contract.length > 0) {
+            setModelContract(payload.data);
+          }
+        }
+
+        if (
+          payload.type === "tool_result" &&
+          getPayloadToolKind(payload) === "get_model_details"
+        ) {
+          setRecommendedModelName(payload.data?.name ?? "");
+          setRecommendedModelDesc(payload.data?.description ?? "");
+          setWorkflow(payload.data?.workflow ?? []);
+          setIsRunning(false);
+
+          setSessionList((prev) =>
+            prev.map((s) =>
+              s._id === currentSessionId
+                ? {
+                    ...s,
+                    recommendedModel: {
+                      status: "success",
+                      name: payload.data?.name ?? "",
+                      md5: payload.data?.md5 ?? "",
+                      description: payload.data?.description ?? "",
+                      workflow: payload.data?.workflow ?? [],
+                    },
+                  }
+                : s,
+            ),
+          );
+        }
+
         setMessages((prev) => {
           // 处理文本消息
           if (payload.type === "token") {
@@ -613,87 +770,93 @@ export default function IntelligentDecision() {
           }
 
           // 处理所有工具事件
-          return prev.map((msg) => {
-            if (msg.id !== toolMessageId) return msg;
+          const next = [...prev];
+          let targetIndex = next.findIndex((m) => m.id === toolMessageId);
 
-            let updatedTools = [...(msg.tools ?? [])];
+          // 如果占位消息丢失，自动补建，避免工具框不显示
+          if (
+            targetIndex === -1 &&
+            (payload.type === "tool_call" || payload.type === "tool_result")
+          ) {
+            next.push({
+              id: toolMessageId,
+              role: "AI",
+              type: "tool",
+              content: "",
+              tools: [],
+              started: true,
+            });
+            targetIndex = next.length - 1;
+          }
 
-            // 工具开始运行
-            if (payload.type === "tool_call") {
-              if (!updatedTools.find((t) => t.kind === payload.tool)) {
-                updatedTools.push({
-                  id: crypto.randomUUID(),
-                  kind: payload.tool,
-                  status: "running",
-                  title: getToolTitle(payload.tool),
-                });
-              }
-            }
-
-            // 工具运行完成
-            if (payload.type === "tool_result") {
-              updatedTools = updatedTools.map((t) =>
-                t.kind === payload.tool
-                  ? {
-                      ...t,
-                      status: "success" as const,
-                      type: "tool",
-                      title: getFinishToolTitle(payload.tool),
-                      result: payload.data,
-                    }
-                  : t,
-              );
-            }
-
-            // 最终完成
+          if (targetIndex === -1) {
             if (payload.type === "final") {
               es.close();
             }
+            return next;
+          }
 
-            return { ...msg, tools: updatedTools };
-          });
+          let updatedTools = [...(next[targetIndex].tools ?? [])];
+
+          // 工具开始运行
+          if (payload.type === "tool_call") {
+            const toolKind = getPayloadToolKind(payload);
+            if (!toolKind) return next;
+
+            if (!updatedTools.find((t) => t.kind === toolKind)) {
+              updatedTools.push({
+                id: crypto.randomUUID(),
+                kind: toolKind as any,
+                status: "running",
+                title: getToolTitle(toolKind),
+              });
+            }
+          }
+
+          // 工具运行完成
+          if (payload.type === "tool_result") {
+            const toolKind = getPayloadToolKind(payload);
+            if (!toolKind) return next;
+
+            updatedTools = updatedTools.map((t) =>
+              t.kind === toolKind
+                ? {
+                    ...t,
+                    status: "success" as const,
+                    type: "tool",
+                    title: getFinishToolTitle(toolKind),
+                    result:
+                      payload.data ?? payload.result ?? payload.output ?? null,
+                  }
+                : t,
+            );
+
+            if (!updatedTools.find((t) => t.kind === toolKind)) {
+              updatedTools.push({
+                id: crypto.randomUUID(),
+                kind: toolKind as any,
+                status: "success",
+                title: getFinishToolTitle(toolKind),
+                result:
+                  payload.data ?? payload.result ?? payload.output ?? null,
+              });
+            }
+          }
+
+          // 最终完成
+          if (payload.type === "final") {
+            es.close();
+          }
+
+          next[targetIndex] = {
+            ...next[targetIndex],
+            type: "tool",
+            tools: updatedTools,
+            started: true,
+          };
+          return next;
         });
 
-        if (
-          payload.type === "tool_result" &&
-          payload.tool === "get_model_details"
-        ) {
-          setRecommendedModelName(payload.data?.name ?? "");
-          setRecommendedModelDesc(payload.data?.description ?? "");
-          setWorkflow(payload.data?.workflow ?? []);
-          setIsRunning(false);
-
-          setSessionList((prev) =>
-            prev.map((s) =>
-              s._id === currentSessionId
-                ? {
-                    ...s,
-                    recommendedModel: {
-                      status: "success",
-                      name: payload.data?.name ?? "",
-                      md5: payload.data?.md5 ?? "",
-                      description: payload.data?.description ?? "",
-                      workflow: payload.data?.workflow ?? [],
-                    },
-                  }
-                : s,
-            ),
-          );
-        }
-
-        if (payload.type === "task_spec_generated") {
-          const taskSpec = payload.data;
-          if (taskSpec && Object.keys(taskSpec).length > 0) {
-            setCurrentTaskSpec(payload.data);
-          }
-        }
-
-        if (payload.type === "model_contract_generated") {
-          const modelContract = payload.data.Required_slots;
-          if (modelContract && modelContract.length > 0) {
-            setModelContract(payload.data);
-          }
-        }
       } catch (err) {
         console.error("Invalid SSE data:", e.data);
       }
@@ -703,6 +866,9 @@ export default function IntelligentDecision() {
       console.error("[SSE error]", err);
       es.close();
       setIsRunning(false);
+      setIsAgentRunning(false);
+      setAgentStatusText("Agent 运行中断，请重试");
+      setAgentStatusAnchorId(null);
     };
 
     const getToolTitle = (toolKind: string) => {
@@ -744,7 +910,7 @@ export default function IntelligentDecision() {
         forData.append("file", file);
         forData.append("sessionId", activeChatId);
 
-        const uploadRes = await fetch(`${BACK_URL}/data/uploadAndConvert`, {
+        const uploadRes = await authFetch(`${BACK_URL}/data/uploadAndConvert`, {
           method: "POST",
           body: forData,
         });
@@ -846,7 +1012,7 @@ export default function IntelligentDecision() {
     setIsAligning(true);
     try {
       // 调用POST接口，优先按SSE流式返回解析
-      const alignResponse = await fetch(
+      const alignResponse = await authFetch(
         `${BACK_URL}/chat/sessions/${activeChatId}/align`,
         {
           method: "POST",
@@ -1002,7 +1168,7 @@ export default function IntelligentDecision() {
       [`context.${name}`]: value,
     };
     // 调用GET接口读取持久化字段，刷新前端状态
-      const sessionResponse = await fetch(
+      const sessionResponse = await authFetch(
         `${BACK_URL}/chat/sessions/${activeChatId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1058,7 +1224,7 @@ export default function IntelligentDecision() {
   // 轮询获取任务状态
   const pollTaskStatus = async (taskId: string) => {
     try {
-      const response = await fetch(`${BACK_URL}/model/status/${taskId}`);
+      const response = await authFetch(`${BACK_URL}/model/status/${taskId}`);
       const data = await response.json();
 
       if (!data.success) {
@@ -1082,7 +1248,7 @@ export default function IntelligentDecision() {
 
         // 获取最终结果
         try {
-          const resultResponse = await fetch(`${BACK_URL}/model/result/${taskId}`);
+          const resultResponse = await authFetch(`${BACK_URL}/model/result/${taskId}`);
           const resultData = await resultResponse.json();
 
           if (resultData.success) {
@@ -1165,7 +1331,7 @@ export default function IntelligentDecision() {
     });
 
     try {
-      const response = await fetch(`${BACK_URL}/model/run`, {
+      const response = await authFetch(`${BACK_URL}/model/run`, {
         method: "POST",
         body: formData,
       });
@@ -1240,10 +1406,7 @@ export default function IntelligentDecision() {
         <div className="mb-5 space-y-2">
           <button
             className="w-full py-2 px-2 rounded-lg flex items-center gap-2 hover:bg-gray-700 transition"
-            onClick={() => {
-              resetToInitialState(false);
-              navigate("/decision");
-            }}
+            onClick={handleCreateNewChat}
           >
             <SquarePen size={20} />
             <span className="text-base">New Chat</span>
@@ -1258,8 +1421,10 @@ export default function IntelligentDecision() {
         <h3 className="font-bold text-base text-gray-200 mb-2 px-2">
           Historical Records
         </h3>
-        <div className="flex-1 overflow-y-auto space-y-2 pr-1
-          [scrollbar-color:transparent_transparent] hover:[scrollbar-color:#4b5563_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-800 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
+        <div
+          className="flex-1 overflow-y-auto space-y-2 pr-1
+          [scrollbar-color:transparent_transparent] hover:[scrollbar-color:#4b5563_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-800 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400"
+        >
           {sessionList.map((session) => {
             const isActive = activeChatId === session._id;
             const isMenuOpen = openSessionMenuId === session._id;
@@ -1394,9 +1559,17 @@ export default function IntelligentDecision() {
                       );
                     })()}
 
+
                     {/* 渲染AI消息区域 */}
                     {msg.role === "AI" && (
                       <div className="flex flex-col space-y-2 w-full max-w-4xl">
+                        {isAgentRunning && msg.id === agentStatusAnchorId && (
+                          <div className="inline-flex items-center gap-2 px-3 py-2 text-sm text-blue-700 self-start">
+                            <Loader2 size={14} className="animate-spin" />
+                            <span>{agentStatusText}</span>
+                          </div>
+                        )}
+
                         {/* 渲染：AI 工具块 */}
                         {msg.tools?.length && (
                           <div className="self-start w-full">
@@ -1411,18 +1584,19 @@ export default function IntelligentDecision() {
                           <div className="p-4 text-black w-full">
                             {/* 添加 prose 系列类名 */}
                             <article
-                              className="prose prose-slate max-w-none
+                              className="prose max-w-none text-black
+                                **:text-black
                                 prose-headings:font-bold
                                 prose-h2:mt-8 prose-h2:mb-4
                                 prose-h3:mt-6
-                                prose-p:text-gray-800
+                                prose-p:text-black
                                 prose-strong:text-black
                                 marker:text-black marker:font-semibold
                                 prose-table:border prose-table:rounded-xl
                                 prose-code:before:content-none prose-code:after:content-none
                                 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
                                 prose-pre:bg-gray-100 prose-pre:p-4 prose-pre:rounded-lg prose-pre:overflow-x-auto
-                                prose-pre:text-sm prose-pre:text-gray-800"
+                                prose-pre:text-sm prose-pre:text-black"
                             >
                               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                 {msg.content}
@@ -1440,7 +1614,6 @@ export default function IntelligentDecision() {
             </div>
           )}
         </div>
-
         <ChatInput onSend={(msg) => handleSendMessage(msg)} />
       </main>
 
@@ -1553,7 +1726,11 @@ export default function IntelligentDecision() {
                       >
                         <Heart
                           size={14}
-                          className={isRecommendedModelFavorited ? "fill-rose-500 text-rose-500" : "text-blue-700"}
+                          className={
+                            isRecommendedModelFavorited
+                              ? "fill-rose-500 text-rose-500"
+                              : "text-blue-700"
+                          }
                         />
                         {isRecommendedModelFavorited ? "已收藏" : "收藏模型"}
                       </button>
