@@ -43,7 +43,19 @@ export default function MapboxViewer({ geoJsonDataArray }: MapboxViewerProps) {
     // 添加导航控件
     map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
+    const resizeMap = () => {
+      map.current?.resize();
+    };
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(resizeMap);
+    });
+    resizeObserver.observe(mapContainer.current);
+    window.addEventListener('resize', resizeMap);
+    map.current.on('load', resizeMap);
+
     return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', resizeMap);
       if (map.current) {
         map.current.remove();
         map.current = null;
@@ -119,6 +131,8 @@ export default function MapboxViewer({ geoJsonDataArray }: MapboxViewerProps) {
         const combinedBounds = mergeBounds(allBounds);
         map.current?.fitBounds(combinedBounds, { padding: 50, maxZoom: 15 });
       }
+
+      map.current?.resize();
     };
 
     loadData();
@@ -319,7 +333,7 @@ export default function MapboxViewer({ geoJsonDataArray }: MapboxViewerProps) {
     <div 
       ref={mapContainer} 
       className="w-full h-full"
-      style={{ minHeight: '400px' }}
+      style={{ minHeight: '240px' }}
     />
   );
 }

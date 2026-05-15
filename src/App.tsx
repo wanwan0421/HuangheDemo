@@ -4,6 +4,7 @@ import Home from './pages/Home';
 import About from './pages/About';
 import Resources from './pages/Resources';
 import Decision from './pages/Decision';
+import DecisionWorkbench from './pages/DecisionWorkbench';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -18,10 +19,18 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path='/resources' element={<Resources />} />
           <Route
-            path="/decision/:sessionId?"
+            path="/chat/:sessionId?"
             element={
               <ProtectedRoute>
                 <Decision />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/simulation/:sessionId?"
+            element={
+              <ProtectedRoute>
+                <DecisionWorkbench />
               </ProtectedRoute>
             }
           />

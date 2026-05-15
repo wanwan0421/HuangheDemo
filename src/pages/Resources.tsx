@@ -113,9 +113,6 @@ export default function Resources() {
       selectedMenuId = level4.id || null;
     }
 
-    console.log("选中的最终标签 (用于后端查询):", selectedMenuId);
-    console.log("搜索关键字：", inputValue);
-
     // 根据当前资源类型调用对应的获取函数
     if (activeResourceType === "methods") {
       fetchAndSetMethods([selectedMenuId || ""], inputValue);
@@ -186,7 +183,6 @@ export default function Resources() {
     if (keyword) {
       queryParams.append("keyword", keyword);
     }
-    console.log("fetchMethods - queryParams:", queryParams.toString());
 
     const url = `${BACK_URL}/resource/findMethods?${queryParams.toString()}`;
 
