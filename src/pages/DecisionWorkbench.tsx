@@ -1,5 +1,4 @@
 import React from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle,
   Bot,
@@ -28,13 +27,32 @@ import type {
   Message,
   SimulationPlan,
   SimulationPlanInputSlot,
-  SimulationPlanSectionId,
   SimulationPlanStatus,
 } from "../types";
+import { useDebouncedWorkbenchPersistence } from "../util/useDebouncedWorkbenchPersistence";
+import { useWorkbenchRouteSession } from "../util/useWorkbenchRouteSession";
+import {
+  createInitialWorkbenchState,
+  workbenchReducer,
+  type RuntimeFilesSetter,
+  type WorkbenchSectionId,
+} from "../util/workbenchReducer";
+import {
+  getFlowHealth,
+  getReadySlotCount,
+  getTaskStatus,
+  type FlowHealth,
+} from "../util/workbenchPlanState";
+import { collectMapLayers, type GeoJsonLayer } from "../util/workbenchMap";
+import {
+  getWorkbenchHistoryItems,
+  getWorkbenchStorageKey,
+  loadWorkbenchStorage,
+  type WorkbenchHistoryItem,
+} from "../util/workbenchStorage";
 import { getPayloadToolKind } from "../util/messageUtils";
 import {
   collectResultOutputs,
-  createInitialSimulationPlan,
   isPlanRunnable,
   makeSimulationSlotId,
   mergeModelContractIntoPlan,
@@ -45,13 +63,8 @@ import {
 } from "../util/simulationPlan";
 
 const BACK_URL = import.meta.env.VITE_BACK_URL;
-const STORAGE_KEY = "geoagent_simulation_workbench";
 
-type WorkbenchStorage = Record<string, { plan: SimulationPlan; messages: Message[] }>;
-type WorkbenchSectionId = Exclude<SimulationPlanSectionId, "parameters">;
-type FlowHealth = "empty" | "draft" | "ready" | "running" | "done" | "error";
-type GeoJsonLayer = { name: string; data: unknown };
-type HistoryItem = { key: string; plan: SimulationPlan; messages: Message[] };
+type HistoryItem = WorkbenchHistoryItem;
 
 const flowMeta: Array<{
   id: WorkbenchSectionId;
@@ -145,46 +158,52 @@ const authFetch = (input: RequestInfo | URL, init?: RequestInit) => {
 };
 
 export default function DecisionWorkbench() {
-  const navigate = useNavigate();
-  const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
-  const [activeChatId, setActiveChatId] = React.useState<string | null>(routeSessionId || null);
-  const [plan, setPlan] = React.useState<SimulationPlan>(() => createInitialSimulationPlan());
-  const [runtimeFiles, setRuntimeFiles] = React.useState<Record<string, File>>({});
-  const [messages, setMessages] = React.useState<Message[]>([]);
+  const [workbenchState, dispatch] = React.useReducer(
+    workbenchReducer,
+    undefined,
+    createInitialWorkbenchState,
+  );
+  const handleRouteSessionChange = React.useCallback((sessionId: string | null) => {
+    dispatch({ type: "set_session", sessionId });
+  }, []);
+  const { navigateToRoot, navigateToSession } = useWorkbenchRouteSession({
+    onRouteSessionChange: handleRouteSessionChange,
+  });
+  const {
+    activeChatId,
+    plan,
+    runtimeFiles,
+    messages,
+    isChatOpen,
+    activeSection,
+    isAgentRunning,
+    agentStatusText,
+    agentStatusAnchorId,
+  } = workbenchState;
   const [chatInput, setChatInput] = React.useState("");
-  const [isChatOpen, setIsChatOpen] = React.useState(true);
-  const [activeSection, setActiveSection] = React.useState<WorkbenchSectionId>("goal");
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [historyItems, setHistoryItems] = React.useState<HistoryItem[]>([]);
-  const [isAgentRunning, setIsAgentRunning] = React.useState(false);
-  const [agentStatusText, setAgentStatusText] = React.useState("Agent 待命");
-  const [agentStatusAnchorId, setAgentStatusAnchorId] = React.useState<string | null>(null);
   const [mapLayers, setMapLayers] = React.useState<GeoJsonLayer[]>(fallbackMapLayers);
   const messageScrollRef = React.useRef<HTMLDivElement | null>(null);
   const statusCheckIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   React.useEffect(() => {
-    setActiveChatId(routeSessionId || null);
-  }, [routeSessionId]);
-
-  React.useEffect(() => {
     if (!activeChatId) return;
     const stored = loadWorkbenchStorage()[activeChatId];
     if (!stored) return;
-    setPlan(stored.plan);
-    setMessages(stored.messages || []);
+    dispatch({
+      type: "hydrate_session",
+      plan: stored.plan,
+      messages: stored.messages || [],
+    });
   }, [activeChatId]);
 
-  const storageKey = React.useMemo(() => activeChatId || `local:${plan.id}`, [activeChatId, plan.id]);
+  const storageKey = React.useMemo(
+    () => getWorkbenchStorageKey(activeChatId, plan.id),
+    [activeChatId, plan.id],
+  );
 
-  React.useEffect(() => {
-    const storage = loadWorkbenchStorage();
-    storage[storageKey] = {
-      plan: serializeSimulationPlan(plan),
-      messages,
-    };
-    saveWorkbenchStorage(storage);
-  }, [storageKey, plan, messages]);
+  useDebouncedWorkbenchPersistence({ storageKey, plan, messages });
 
   React.useEffect(() => {
     messageScrollRef.current?.scrollTo({
@@ -221,7 +240,11 @@ export default function DecisionWorkbench() {
   const outputCount = plan.result.outputs.length;
 
   const updatePlan = React.useCallback((updater: (current: SimulationPlan) => SimulationPlan) => {
-    setPlan((current) => stampPlan(updater(current)));
+    dispatch({ type: "update_plan", updater });
+  }, []);
+
+  const setRuntimeFiles = React.useCallback<RuntimeFilesSetter>((updater) => {
+    dispatch({ type: "set_runtime_files", updater });
   }, []);
 
   const ensureSession = async (title: string) => {
@@ -238,8 +261,8 @@ export default function DecisionWorkbench() {
     }
 
     const nextSessionId = data.data._id as string;
-    setActiveChatId(nextSessionId);
-    navigate(`/simulation/${nextSessionId}`);
+    dispatch({ type: "set_session", sessionId: nextSessionId });
+    navigateToSession(nextSessionId);
     return nextSessionId;
   };
 
@@ -247,9 +270,7 @@ export default function DecisionWorkbench() {
     const prompt = rawPrompt.trim();
     if (!prompt || isAgentRunning) return;
 
-    setIsChatOpen(true);
-    setIsAgentRunning(true);
-    setAgentStatusText("Agent 正在整理方案...");
+    dispatch({ type: "agent_start", statusText: "Agent 正在整理方案..." });
     updatePlan((current) => ({
       ...current,
       status: current.model.recommendedName ? current.status : "drafting",
@@ -269,19 +290,18 @@ export default function DecisionWorkbench() {
       currentSessionId = await ensureSession(prompt);
     } catch (error) {
       console.error("Create workbench session failed", error);
-      setIsAgentRunning(false);
-      setAgentStatusText("Agent 会话创建失败");
+      dispatch({ type: "agent_error", statusText: "Agent 会话创建失败" });
       return;
     }
 
     const userMessageId = crypto.randomUUID();
     const anchorMessageId = crypto.randomUUID();
-    setAgentStatusAnchorId(anchorMessageId);
-    setMessages((prev) => [
-      ...prev,
-      { id: userMessageId, role: "user", content: prompt },
-      { id: anchorMessageId, role: "AI", type: "tool", content: "", tools: [] },
-    ]);
+    dispatch({
+      type: "agent_message_anchor",
+      userMessageId,
+      anchorMessageId,
+      prompt,
+    });
 
     const es = new EventSource(
       `${BACK_URL}/chat/sessions/${currentSessionId}/chat?query=${encodeURIComponent(prompt)}`,
@@ -293,37 +313,37 @@ export default function DecisionWorkbench() {
       try {
         const payload = JSON.parse(event.data);
 
-        if (payload.type === "tool_call") setAgentStatusText("Agent 正在调用工具...");
-        if (payload.type === "tool_result") setAgentStatusText("Agent 正在更新方案...");
+        if (payload.type === "tool_call") {
+          dispatch({ type: "agent_status", statusText: "Agent 正在调用工具..." });
+        }
+        if (payload.type === "tool_result") {
+          dispatch({ type: "agent_status", statusText: "Agent 正在更新方案..." });
+        }
         if (payload.type === "token") {
-          setAgentStatusText("Agent 正在补充说明...");
+          dispatch({ type: "agent_status", statusText: "Agent 正在补充说明..." });
           appendAiToken(payload.message ?? "");
         }
 
         if (payload.type === "plan_draft") {
-          setPlan((current) => normalizePlanDraft(payload.data, current));
+          updatePlan((current) => normalizePlanDraft(payload.data, current));
         }
         if (payload.type === "task_spec_generated") {
-          setPlan((current) => mergeTaskSpecIntoPlan(current, payload.data));
+          updatePlan((current) => mergeTaskSpecIntoPlan(current, payload.data));
         }
         if (payload.type === "model_contract_generated") {
-          setPlan((current) => mergeModelContractIntoPlan(current, payload.data));
+          updatePlan((current) => mergeModelContractIntoPlan(current, payload.data));
         }
         if (payload.type === "tool_result" && getPayloadToolKind(payload) === "search_most_model") {
-          setPlan((current) => mergeRecommendedModelIntoPlan(current, payload.data));
+          updatePlan((current) => mergeRecommendedModelIntoPlan(current, payload.data));
         }
 
         if (payload.type === "final") {
           es.close();
-          setIsAgentRunning(false);
-          setAgentStatusText("Agent 已完成");
-          setAgentStatusAnchorId(null);
-          setPlan((current) =>
-            stampPlan({
+          dispatch({ type: "agent_done", statusText: "Agent 已完成" });
+          updatePlan((current) => ({
               ...current,
               status: current.model.recommendedName ? "ready" : current.status,
-            }),
-          );
+          }));
         }
       } catch (error) {
         console.error("Workbench SSE parse failed", error);
@@ -332,30 +352,12 @@ export default function DecisionWorkbench() {
 
     es.onerror = () => {
       es.close();
-      setIsAgentRunning(false);
-      setAgentStatusText("Agent 连接中断");
-      setAgentStatusAnchorId(null);
+      dispatch({ type: "agent_error", statusText: "Agent 连接中断" });
     };
   };
 
   const appendAiToken = (text: string) => {
-    if (!text) return;
-    setMessages((prev) => {
-      const next = [...prev];
-      const last = next[next.length - 1];
-      if (last && last.role === "AI" && last.type === "text") {
-        next[next.length - 1] = { ...last, content: last.content + text, started: true };
-      } else {
-        next.push({
-          id: crypto.randomUUID(),
-          role: "AI",
-          type: "text",
-          content: text,
-          started: true,
-        });
-      }
-      return next;
-    });
+    dispatch({ type: "append_ai_token", text });
   };
 
   const handlePromptSubmit = () => {
@@ -366,23 +368,29 @@ export default function DecisionWorkbench() {
   };
 
   const openHistory = () => {
-    setHistoryItems(getHistoryItems());
+    setHistoryItems(getWorkbenchHistoryItems());
     setHistoryOpen(true);
   };
 
   const loadHistoryItem = (item: HistoryItem) => {
-    setPlan(item.plan);
-    setMessages(item.messages || []);
-    setRuntimeFiles({});
-    setActiveSection("goal");
     setHistoryOpen(false);
 
     if (item.key.startsWith("local:")) {
-      setActiveChatId(null);
-      navigate("/simulation");
+      dispatch({
+        type: "load_history",
+        plan: item.plan,
+        messages: item.messages || [],
+        sessionId: null,
+      });
+      navigateToRoot();
     } else {
-      setActiveChatId(item.key);
-      navigate(`/simulation/${item.key}`);
+      dispatch({
+        type: "load_history",
+        plan: item.plan,
+        messages: item.messages || [],
+        sessionId: item.key,
+      });
+      navigateToSession(item.key);
     }
   };
 
@@ -405,13 +413,11 @@ export default function DecisionWorkbench() {
       statusCheckIntervalRef.current = null;
     }
 
-    setPlan((current) =>
-      stampPlan({
+    updatePlan((current) => ({
         ...current,
         status: "running",
         result: { taskId: null, status: "running", raw: null, error: null, outputs: [] },
-      }),
-    );
+    }));
 
     const formData = new FormData();
     formData.append(
@@ -451,22 +457,19 @@ export default function DecisionWorkbench() {
       const taskId = responseData.data?.taskId;
       if (!taskId) throw new Error("No taskId returned from backend");
 
-      setActiveSection("results");
-      setPlan((current) =>
-        stampPlan({
+      dispatch({ type: "set_active_section", section: "results" });
+      updatePlan((current) => ({
           ...current,
           status: "running",
           result: { ...current.result, taskId, status: "running" },
-        }),
-      );
+      }));
 
       void pollTaskStatus(taskId);
       statusCheckIntervalRef.current = setInterval(() => {
         void pollTaskStatus(taskId);
       }, 2000);
     } catch (error) {
-      setPlan((current) =>
-        stampPlan({
+      updatePlan((current) => ({
           ...current,
           status: "failed",
           result: {
@@ -474,8 +477,7 @@ export default function DecisionWorkbench() {
             status: "failed",
             error: error instanceof Error ? error.message : "Task publish failed",
           },
-        }),
-      );
+      }));
     }
   };
 
@@ -500,8 +502,7 @@ export default function DecisionWorkbench() {
         if (!resultData.success) throw new Error(resultData.message || "Failed to get result");
 
         const rawResult = resultData.data ?? null;
-        setPlan((current) =>
-          stampPlan({
+        updatePlan((current) => ({
             ...current,
             status: "done",
             result: {
@@ -511,15 +512,13 @@ export default function DecisionWorkbench() {
               error: null,
               outputs: collectResultOutputs(rawResult),
             },
-          }),
-        );
+        }));
       } else if (currentStatus === "Failed" || currentStatus === "Error") {
         if (statusCheckIntervalRef.current) {
           clearInterval(statusCheckIntervalRef.current);
           statusCheckIntervalRef.current = null;
         }
-        setPlan((current) =>
-          stampPlan({
+        updatePlan((current) => ({
             ...current,
             status: "failed",
             result: {
@@ -528,24 +527,20 @@ export default function DecisionWorkbench() {
               status: "failed",
               error: statusPayload?.error || "Task execution failed",
             },
-          }),
-        );
+        }));
       } else {
-        setPlan((current) =>
-          stampPlan({
+        updatePlan((current) => ({
             ...current,
             status: "running",
             result: { ...current.result, taskId, status: "running" },
-          }),
-        );
+        }));
       }
     } catch (error) {
       if (statusCheckIntervalRef.current) {
         clearInterval(statusCheckIntervalRef.current);
         statusCheckIntervalRef.current = null;
       }
-      setPlan((current) =>
-        stampPlan({
+      updatePlan((current) => ({
           ...current,
           status: "failed",
           result: {
@@ -554,21 +549,20 @@ export default function DecisionWorkbench() {
             status: "failed",
             error: error instanceof Error ? error.message : "Failed to check task status",
           },
-        }),
-      );
+      }));
     }
   };
 
   return (
-    <div className="flex h-[calc(100vh-64px)] flex-col overflow-hidden bg-blue-50 text-slate-950">
-      <header className="shrink-0 bg-linear-to-r from-blue-950 via-blue-900 to-blue-700 px-4 py-3 text-white lg:px-6">
+    <div className="flex h-[calc(100vh-64px)] flex-col overflow-hidden bg-[#eef6ff] text-slate-950">
+      <header className="shrink-0 bg-linear-to-r from-[#0b1f4d] via-[#123b82] to-[#0f73b7] px-4 py-3 text-white shadow-lg shadow-blue-950/15 lg:px-6">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="truncate text-lg font-semibold text-white lg:text-xl">
               {plan.title}
             </h1>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-md bg-white/12 px-2 py-1 text-xs font-semibold text-blue-100 ring-1 ring-white/20">
+              <span className="rounded-md bg-white/12 px-2 py-1 text-xs font-semibold text-sky-100 ring-1 ring-white/20">
                 {statusLabels[plan.status]}
               </span>
             </div>
@@ -578,7 +572,7 @@ export default function DecisionWorkbench() {
             <button
               type="button"
               onClick={openHistory}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/15"
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-white/16"
             >
               <History size={15} />
               历史方案
@@ -586,14 +580,10 @@ export default function DecisionWorkbench() {
             <button
               type="button"
               onClick={() => {
-                setPlan(createInitialSimulationPlan());
-                setRuntimeFiles({});
-                setMessages([]);
-                setActiveChatId(null);
-                setActiveSection("goal");
-                navigate("/simulation");
+                dispatch({ type: "new_plan" });
+                navigateToRoot();
               }}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/15"
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-white/16"
             >
               <RefreshCw size={15} />
               新方案
@@ -602,7 +592,7 @@ export default function DecisionWorkbench() {
               type="button"
               disabled={!canRun || plan.status === "running"}
               onClick={() => void handleRun()}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-800 disabled:bg-white/20 disabled:text-blue-100/60"
+              className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-950/20 transition hover:bg-sky-400 disabled:bg-white/20 disabled:text-blue-100/60"
             >
               {plan.status === "running" ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
               运行
@@ -617,14 +607,14 @@ export default function DecisionWorkbench() {
           runtimeFiles={runtimeFiles}
           activeSection={activeSection}
           flowHealth={flowHealth}
-          onSelect={setActiveSection}
+          onSelect={(section) => dispatch({ type: "set_active_section", section })}
         />
 
         <section className="min-h-0 p-3 lg:p-4">
           <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]">
-            <div className="relative min-h-[360px] overflow-hidden rounded-lg border border-blue-100 bg-white shadow-sm">
+            <div className="relative min-h-[360px] overflow-hidden rounded-lg border border-blue-100 bg-white shadow-lg shadow-blue-950/8">
               <MapboxViewer geoJsonDataArray={mapLayers} />
-              <MapOverlay
+              <MapOverlay 
                 layerCount={mapLayers.length}
                 isFallback={mapLayers === fallbackMapLayers}
                 outputCount={outputCount}
@@ -651,7 +641,7 @@ export default function DecisionWorkbench() {
           agentStatusText={agentStatusText}
           agentStatusAnchorId={agentStatusAnchorId}
           messageScrollRef={messageScrollRef}
-          onToggle={() => setIsChatOpen((open) => !open)}
+          onToggle={() => dispatch({ type: "set_chat_open", open: (current) => !current })}
           onInputChange={setChatInput}
           onSubmit={handlePromptSubmit}
         />
@@ -695,7 +685,7 @@ function PlanFlow({
   };
 
   return (
-    <section className="shrink-0 bg-blue-50 border border-blue-200 px-3 py-3 lg:px-5">
+    <section className="shrink-0 border-b border-blue-100 bg-white/95 px-3 py-3 shadow-sm shadow-blue-950/5 lg:px-5">
       <div className="flex items-stretch gap-2 overflow-x-auto pb-1">
         {flowMeta.map((item, index) => {
           const Icon = item.icon;
@@ -707,13 +697,13 @@ function PlanFlow({
                 onClick={() => onSelect(item.id)}
                 className={`flex min-w-[190px] items-center gap-3 rounded-lg border px-3 py-3 text-left transition ${
                   active
-                    ? "border-blue-500 bg-blue-100 shadow-sm"
-                    : "border-blue-100 bg-white hover:border-blue-300 hover:bg-blue-50/40"
+                    ? "border-blue-500 bg-linear-to-br from-blue-50 to-sky-50 shadow-sm shadow-blue-950/8"
+                    : "border-blue-100 bg-white hover:border-blue-300 hover:bg-blue-50/50"
                 }`}
               >
                 <span
                   className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
-                    active ? "bg-blue-700 text-white" : "bg-blue-50 text-blue-700"
+                    active ? "bg-blue-600 text-white shadow-sm" : "bg-sky-50 text-blue-700"
                   }`}
                 >
                   <Icon size={17} />
@@ -753,21 +743,22 @@ function FlowInspector({
   runtimeFiles: Record<string, File>;
   taskStatus: string;
   updatePlan: (updater: (current: SimulationPlan) => SimulationPlan) => void;
-  setRuntimeFiles: React.Dispatch<React.SetStateAction<Record<string, File>>>;
+  setRuntimeFiles: RuntimeFilesSetter;
   onAskAgent: (sectionId: WorkbenchSectionId) => void;
 }) {
   const meta = flowMeta.find((item) => item.id === sectionId) || flowMeta[0];
 
   return (
-    <aside className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-blue-400 bg-white shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-blue-100 bg-blue-400 px-4 py-3">
+    <aside className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-blue-100 bg-white shadow-lg shadow-blue-950/8">
+      <div className="flex items-center justify-between gap-3 border-b border-blue-100 bg-linear-to-r from-blue-50 to-sky-50 px-4 py-3">
         <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">配置</p>
           <h2 className="truncate text-base font-semibold text-slate-950">{meta.label}</h2>
         </div>
         <button
           type="button"
           onClick={() => onAskAgent(sectionId)}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-200 px-2 py-1.5 text-xs font-medium text-black hover:bg-blue-600"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700"
         >
           <Wand2 size={13} />
           Agent 修改
@@ -776,7 +767,7 @@ function FlowInspector({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {sectionId === "goal" && <GoalPanel plan={plan} updatePlan={updatePlan} />}
-        {sectionId === "model" && <ModelPanel plan={plan} updatePlan={updatePlan} />}
+        {sectionId === "model" && <ModelPanel plan={plan} />}
         {sectionId === "data" && (
           <DataPanel
             plan={plan}
@@ -840,34 +831,13 @@ function GoalPanel({
 
 function ModelPanel({
   plan,
-  updatePlan,
 }: {
   plan: SimulationPlan;
-  updatePlan: (updater: (current: SimulationPlan) => SimulationPlan) => void;
 }) {
   return (
     <div className="space-y-3">
-      <TextField
-        label="推荐模型"
-        value={plan.model.recommendedName || ""}
-        placeholder="等待 Agent 推荐"
-        onChange={(value) =>
-          updatePlan((current) => ({
-            ...current,
-            status: value ? "ready" : "drafting",
-            model: { ...current.model, recommendedName: value || null },
-          }))
-        }
-      />
-      <TextAreaField
-        label="模型说明"
-        value={plan.model.description}
-        rows={3}
-        placeholder="模型能力、适用场景、为什么推荐"
-        onChange={(value) =>
-          updatePlan((current) => ({ ...current, model: { ...current.model, description: value } }))
-        }
-      />
+      <ReadOnlyField label="推荐模型" value={plan.model.recommendedName || "等待 Agent 推荐"} />
+      <ReadOnlyField label="模型说明" value={plan.model.description || "暂无模型说明"} multiline />
 
       <MiniList
         title="备选模型"
@@ -887,7 +857,7 @@ function DataPanel({
   plan: SimulationPlan;
   runtimeFiles: Record<string, File>;
   updatePlan: (updater: (current: SimulationPlan) => SimulationPlan) => void;
-  setRuntimeFiles: React.Dispatch<React.SetStateAction<Record<string, File>>>;
+  setRuntimeFiles: RuntimeFilesSetter;
 }) {
   const updateSlotValue = (slot: SimulationPlanInputSlot, value: string) => {
     updatePlan((current) => ({
@@ -932,31 +902,39 @@ function DataPanel({
     <div className="space-y-3">
       {plan.data.slots.map((slot) => {
         const file = runtimeFiles[slot.id] || runtimeFiles[slot.name];
+        const needsFileReselect = slot.kind === "file" && !file && Boolean(slot.fileName);
         return (
-          <div key={slot.id} className="rounded-lg border border-slate-200 p-3">
+          <div key={slot.id} className="rounded-lg border border-blue-100 bg-white p-3 shadow-sm shadow-blue-950/4">
             <div className="mb-2 flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-slate-900">{slot.name}</p>
                 <p className="mt-0.5 truncate text-xs text-slate-500">{slot.source || slot.type}</p>
               </div>
-              <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600">{slot.type}</span>
+              <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">{slot.type}</span>
             </div>
             {slot.description && <p className="mb-2 line-clamp-2 text-xs text-slate-500">{slot.description}</p>}
             {slot.kind === "file" ? (
-              <label className="flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-dashed border-blue-200 px-3 py-2 text-sm hover:border-blue-400 hover:bg-blue-50">
-                <span className="min-w-0 truncate text-slate-700">
-                  {file?.name || slot.fileName || "选择文件"}
-                </span>
-                <Upload size={16} className="shrink-0 text-blue-700" />
-                <input
-                  type="file"
-                  className="hidden"
-                  onChange={(event) => {
-                    const selected = event.target.files?.[0];
-                    if (selected) updateSlotFile(slot, selected);
-                  }}
-                />
-              </label>
+              <>
+                <label className="flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-dashed border-blue-200 bg-blue-50/30 px-3 py-2 text-sm transition hover:border-blue-400 hover:bg-blue-50">
+                  <span className="min-w-0 truncate text-slate-700">
+                    {file?.name || (slot.fileName ? `上次选择：${slot.fileName}` : "选择文件")}
+                  </span>
+                  <Upload size={16} className="shrink-0 text-blue-700" />
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(event) => {
+                      const selected = event.target.files?.[0];
+                      if (selected) updateSlotFile(slot, selected);
+                    }}
+                  />
+                </label>
+                {needsFileReselect && (
+                  <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-700">
+                    历史方案不会保存本地文件，请重新选择该文件后再运行。
+                  </p>
+                )}
+              </>
             ) : (
               <input
                 value={slot.value ?? ""}
@@ -968,7 +946,7 @@ function DataPanel({
         );
       })}
 
-      <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+      <div className="rounded-lg border border-sky-100 bg-linear-to-br from-sky-50 to-blue-50/70 p-3">
         <div className="mb-3 flex items-center gap-2">
           <SlidersHorizontal size={16} className="text-blue-700" />
           <p className="text-sm font-semibold text-slate-900">参数</p>
@@ -1084,7 +1062,7 @@ function MapOverlay({
 }) {
   return (
     <>
-      <div className="absolute left-3 top-3 max-w-md rounded-lg border border-blue-100 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
+      <div className="absolute left-3 top-3 max-w-md rounded-lg border border-blue-100 bg-white/95 px-3 py-2 shadow-lg shadow-blue-950/10 backdrop-blur">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
           <Layers3 size={15} className="text-blue-700" />
           {isFallback ? "地理底图预览" : "模拟结果地图"}
@@ -1124,13 +1102,13 @@ function ChatDock({
   onSubmit: () => void;
 }) {
   return (
-    <section className={`shrink-0 border-t border-blue-200 bg-white transition-all ${open ? "h-72" : "h-12"}`}>
-      <div className="flex h-12 items-center justify-between border-b border-blue-100 bg-blue-100 px-4">
+    <section className={`shrink-0 border-t border-blue-100 bg-white shadow-[0_-8px_24px_rgba(30,64,175,0.08)] transition-all ${open ? "h-72" : "h-12"}`}>
+      <div className="flex h-12 items-center justify-between border-b border-blue-100 bg-linear-to-r from-blue-50 to-sky-50 px-4">
         <div className="flex items-center gap-2">
           <MessageSquareText size={16} className="text-blue-700" />
           <span className="text-sm font-semibold text-slate-800">智能助手</span>
           {isAgentRunning && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-700">
+            <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-white px-2 py-1 text-xs text-blue-700">
               <Loader2 size={12} className="animate-spin" />
               {agentStatusText}
             </span>
@@ -1139,7 +1117,7 @@ function ChatDock({
         <button
           type="button"
           onClick={onToggle}
-          className="rounded-md p-1.5 text-blue-700 hover:bg-blue-100 hover:text-blue-900"
+          className="rounded-md p-1.5 text-blue-700 transition hover:bg-white hover:text-blue-900"
           aria-label={open ? "收起聊天" : "展开聊天"}
         >
           {open ? <PanelBottomClose size={18} /> : <PanelBottomOpen size={18} />}
@@ -1167,7 +1145,7 @@ function ChatDock({
             )}
           </div>
 
-          <div className="border-t border-blue-100 bg-blue-50/30 px-4 py-3">
+          <div className="border-t border-blue-100 bg-blue-50/40 px-4 py-3">
             <div className="mx-auto flex max-w-6xl items-end gap-2">
               <textarea
                 value={chatInput}
@@ -1179,13 +1157,13 @@ function ChatDock({
                   }
                 }}
                 placeholder="描述需求，或让 Agent 调整当前方案..."
-                className="min-h-10 max-h-24 flex-1 resize-none rounded-lg border border-blue-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                className="min-h-10 max-h-24 flex-1 resize-none rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
               <button
                 type="button"
                 disabled={!chatInput.trim() || isAgentRunning}
                 onClick={onSubmit}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-700 text-white hover:bg-blue-800 disabled:bg-slate-300"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 disabled:bg-slate-300"
                 aria-label="发送"
               >
                 {isAgentRunning ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
@@ -1211,8 +1189,8 @@ function HistoryPanel({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-end bg-blue-950/35 p-4 backdrop-blur-sm">
-      <div className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-lg border border-blue-100 bg-white shadow-2xl">
-        <div className="flex items-center justify-between gap-3 border-b border-blue-100 bg-blue-50 px-4 py-3">
+      <div className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-lg border border-blue-100 bg-white shadow-2xl shadow-blue-950/20">
+        <div className="flex items-center justify-between gap-3 border-b border-blue-100 bg-linear-to-r from-blue-50 to-sky-50 px-4 py-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">History</p>
             <h2 className="text-base font-semibold text-slate-950">历史方案</h2>
@@ -1241,7 +1219,7 @@ function HistoryPanel({
                     onClick={() => onLoad(item)}
                     className={`w-full rounded-lg border px-3 py-3 text-left transition ${
                       active
-                        ? "border-blue-500 bg-blue-50"
+                        ? "border-blue-500 bg-linear-to-br from-blue-50 to-sky-50 shadow-sm"
                         : "border-blue-100 bg-white hover:border-blue-300 hover:bg-blue-50/60"
                     }`}
                   >
@@ -1282,7 +1260,9 @@ function ChatBubble({
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-          isUser ? "bg-blue-700 text-white" : "border border-blue-100 bg-blue-50 text-slate-800"
+          isUser
+            ? "bg-blue-600 text-white shadow-sm"
+            : "border border-blue-100 bg-white text-slate-800 shadow-sm"
         }`}
       >
         {isStatus && !message.content ? (
@@ -1309,14 +1289,17 @@ function TextField({
   placeholder?: string;
   onChange: (value: string) => void;
 }) {
+  const fieldId = React.useId();
+
   return (
-    <label className="block space-y-1.5">
+    <label htmlFor={fieldId} className="block space-y-1.5">
       <span className="text-xs font-semibold text-slate-600">{label}</span>
       <input
+        id={fieldId}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg border border-blue-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
       />
     </label>
   );
@@ -1335,23 +1318,49 @@ function TextAreaField({
   rows: number;
   onChange: (value: string) => void;
 }) {
+  const fieldId = React.useId();
+
   return (
-    <label className="block space-y-1.5">
+    <label htmlFor={fieldId} className="block space-y-1.5">
       <span className="text-xs font-semibold text-slate-600">{label}</span>
       <textarea
+        id={fieldId}
         value={value}
         rows={rows}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full resize-y rounded-lg border border-blue-200 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        className="w-full resize-y rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
       />
     </label>
   );
 }
 
+function ReadOnlyField({
+  label,
+  value,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+}) {
+  return (
+    <div className="block space-y-1.5">
+      <span className="text-xs font-semibold text-slate-600">{label}</span>
+      <div
+        className={`rounded-lg border border-blue-100 bg-blue-50/45 px-3 py-2 text-sm text-slate-700 ${
+          multiline ? "min-h-20 whitespace-pre-wrap leading-relaxed" : "truncate"
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function MiniList({ title, values, empty }: { title: string; values: string[]; empty: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+    <div className="rounded-lg border border-blue-100 bg-blue-50/45 p-3">
       <p className="mb-2 text-sm font-semibold text-slate-800">{title}</p>
       {values.length === 0 ? (
         <p className="text-sm text-slate-500">{empty}</p>
@@ -1371,7 +1380,7 @@ function MiniList({ title, values, empty }: { title: string; values: string[]; e
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5 text-center">
+    <div className="rounded-lg border border-dashed border-blue-200 bg-blue-50/45 p-5 text-center">
       <p className="text-sm font-semibold text-slate-800">{title}</p>
       <p className="mt-1 text-sm text-slate-500">{body}</p>
     </div>
@@ -1390,137 +1399,7 @@ function HealthDot({ health }: { health: FlowHealth }) {
   return <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${className}`} />;
 }
 
-async function collectMapLayers(result: unknown): Promise<GeoJsonLayer[]> {
-  const rawOutputs = getResultOutputItems(result);
-  const layers: GeoJsonLayer[] = [];
-
-  for (let index = 0; index < rawOutputs.length; index += 1) {
-    const item = rawOutputs[index];
-    const name = readString(item, ["name", "outputName"], `Output-${index + 1}`);
-    const conversion = readRecord(item.conversion);
-    const inlineGeoJson = item.geojson;
-    const url = readString(item, ["url"]);
-
-    if (conversion?.data) {
-      layers.push({ name, data: { conversion: { type: "vector", data: conversion.data } } });
-    } else if (inlineGeoJson) {
-      layers.push({ name, data: { conversion: { type: "vector", data: inlineGeoJson } } });
-    } else if (isGeoJsonUrl(url)) {
-      try {
-        const response = await fetch(url);
-        const geojson = await response.json();
-        layers.push({ name, data: { conversion: { type: "vector", data: geojson } } });
-      } catch (error) {
-        console.warn("Load result geojson failed", url, error);
-      }
-    }
-  }
-
-  return layers;
-}
-
-function getFlowHealth(
-  plan: SimulationPlan,
-  runtimeFiles: Record<string, File>,
-): Record<WorkbenchSectionId, FlowHealth> {
-  const dataReady =
-    (plan.data.slots.length > 0 || Object.keys(plan.parameters.values).length > 0) &&
-    plan.data.slots.every((slot) => {
-      if (!slot.required) return true;
-      if (slot.kind === "file") return Boolean(runtimeFiles[slot.id] || runtimeFiles[slot.name] || slot.fileName);
-      return slot.value !== null && slot.value !== "";
-    }) &&
-    Object.values(plan.parameters.values).every((value) => value !== null && value !== "");
-
-  return {
-    goal: plan.goal.objective ? "ready" : "empty",
-    model: plan.model.recommendedName ? "ready" : plan.model.workflow.length > 0 ? "draft" : "empty",
-    data: dataReady ? "ready" : plan.data.slots.length > 0 || Object.keys(plan.parameters.values).length > 0 ? "draft" : "empty",
-    results:
-      plan.status === "failed"
-        ? "error"
-        : plan.status === "running"
-          ? "running"
-          : plan.result.raw
-            ? "done"
-            : "empty",
-  };
-}
-
-function getReadySlotCount(plan: SimulationPlan, runtimeFiles: Record<string, File>) {
-  return plan.data.slots.filter((slot) => {
-    if (slot.kind === "file") return Boolean(runtimeFiles[slot.id] || runtimeFiles[slot.name] || slot.fileName);
-    return slot.value !== null && slot.value !== "";
-  }).length;
-}
-
-function getTaskStatus(plan: SimulationPlan) {
-  if (plan.status === "running") return "running";
-  if (plan.status === "failed") return "failed";
-  if (plan.status === "done") return "completed";
-  return plan.result.status || "idle";
-}
-
-function stampPlan(plan: SimulationPlan): SimulationPlan {
-  return { ...plan, updatedAt: new Date().toISOString() };
-}
-
-function getResultOutputItems(result: unknown): Record<string, unknown>[] {
-  const record = readRecord(result);
-  const items = Array.isArray(record?.result) ? record.result : Array.isArray(record?.outputs) ? record.outputs : [];
-  return items.filter((item): item is Record<string, unknown> => Boolean(readRecord(item)));
-}
-
-function readRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function readString(record: Record<string, unknown> | null, keys: string[], fallback = "") {
-  if (!record) return fallback;
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "string" || typeof value === "number") return String(value);
-  }
-  return fallback;
-}
-
-function isGeoJsonUrl(url: string) {
-  return /\.(geojson|json)(\?|$)/i.test(url);
-}
-
-function getHistoryItems(): HistoryItem[] {
-  return Object.entries(loadWorkbenchStorage())
-    .map(([key, value]) => ({ key, ...value }))
-    .filter((item) => Boolean(item.plan?.id))
-    .sort((a, b) => {
-      const bTime = new Date(b.plan.updatedAt || b.plan.createdAt).getTime();
-      const aTime = new Date(a.plan.updatedAt || a.plan.createdAt).getTime();
-      return bTime - aTime;
-    });
-}
-
 function formatTime(value: string) {
   if (!value) return "";
   return new Date(value).toLocaleString();
-}
-
-function loadWorkbenchStorage(): WorkbenchStorage {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveWorkbenchStorage(storage: WorkbenchStorage) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(storage));
-  } catch (error) {
-    console.error("Persist simulation workbench failed", error);
-  }
 }

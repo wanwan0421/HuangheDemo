@@ -1,9 +1,8 @@
 import React, { useState, useMemo } from "react";
-import { useNavigate, useParams } from "react-router-dom";
 import { SquarePen, Search, Sparkles, Activity, MoreVertical, Info, ScanSearch, Play, Columns2, Heart } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ModelExecuteProcess from "../components/ModelExecuteProcess";
-import type { WorkflowState, Message} from "../types";
+import type { Message } from "../types";
 import TaskSpecCard from "../components/TaskSpecCard";
 import { RequirementTooltip, type ModelContractItem } from "../components/ModelContract";
 import { isModelFavorited, toggleFavoriteModel } from "../lib/userCenter.ts";
@@ -20,6 +19,12 @@ import {
   persistDecisionSessionState,
   removeDecisionSessionState,
 } from "../util/sessionState";
+import {
+  createInitialDecisionWorkspaceState,
+  decisionWorkspaceReducer,
+  type DecisionWorkspaceState,
+} from "../util/decisionWorkspaceReducer";
+import { useDecisionSessionRoute } from "../util/useDecisionSessionRoute";
 
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
@@ -32,24 +37,43 @@ const authFetch = (input: RequestInfo | URL, init?: RequestInit) => {
 };
 
 export default function IntelligentDecision() {
-  const navigate = useNavigate();
-  const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
-
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const copyResetTimerRef = React.useRef<number | null>(null);
 
+  const [workspaceState, dispatchWorkspace] = React.useReducer(
+    decisionWorkspaceReducer,
+    undefined,
+    createInitialDecisionWorkspaceState,
+  );
+  const {
+    currentTaskSpec,
+    modelContract,
+    recommendedModelName,
+    recommendedModelDesc,
+    workflow,
+    isRunning,
+    modelTaskId,
+    modelTaskStatus,
+    modelRunResult,
+    modelRunError,
+    isAgentRunning,
+    agentStatusText,
+    agentStatusAnchorId,
+    rightPanelMode,
+  } = workspaceState;
+
+  const patchWorkspace = React.useCallback(
+    (patch: Partial<DecisionWorkspaceState>) => {
+      dispatchWorkspace({ type: "patch", patch });
+    },
+    [],
+  );
   // 当前任务需求
-  const [currentTaskSpec, setCurrentTaskSpec] = useState<any | null>(null);
   // 当前推荐模型要求
-  const [modelContract, setModelContract] = useState<any | null>(null);
 
   // 推荐的模型信息
-  const [recommendedModelName, setRecommendedModelName] = useState<string | null>(null);
-  const [recommendedModelDesc, setRecommendedModelDesc] = useState<string | null>(null);
   const [isRecommendedModelFavorited, setIsRecommendedModelFavorited] = useState(false);
-  const [workflow, setWorkflow] = useState<WorkflowState[]>([]);
 
   // 扫描数据状态
   const [isScanning, setIsScanning] = useState(false);
@@ -82,52 +106,42 @@ export default function IntelligentDecision() {
     );
 
   // 模型运行状态
-  const [isRunning, setIsRunning] = useState(false);
-  // @ts-ignore - taskId is stored for potential future use (debugging, recovery)
-  const [modelTaskId, setModelTaskId] = useState<string | null>(null);
-  const [modelTaskStatus, setModelTaskStatus] = useState<string>('idle'); // idle, running, completed, failed
-  const [modelRunResult, setModelRunResult] = useState<any | null>(null);
-  const [modelRunError, setModelRunError] = useState<string | null>(null);
-  const [isAgentRunning, setIsAgentRunning] = useState(false);
-  const [agentStatusText, setAgentStatusText] = useState("Agent 正在思考...");
-  const [agentStatusAnchorId, setAgentStatusAnchorId] = useState<string | null>(null);
-  const [rightPanelMode, setRightPanelMode] = useState<"form" | "execution">("form");
   const statusCheckIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const isHydratingSessionRef = React.useRef(false);
 
   // 设置对话列表状态
   const [sessionList, setSessionList] = useState<any[]>([]);
   const [openSessionMenuId, setOpenSessionMenuId] = useState<string | null>(null,);
-  // 记录当前操作是用户从左侧列表点击切换还是发送一条消息时自动创建新对话
-  const isManualSwitch = React.useRef(false);
-  // 避免点击 New Chat 时被旧路由参数瞬间回填到原会话
-  const isCreatingNewChat = React.useRef(false);
-  // 发送首条消息自动创建会话时，避免被路由同步误判为手动切换
-  const isAutoSessionBootstrap = React.useRef(false);
+
+  const resetWorkspaceForSessionRoute = React.useCallback(() => {
+    setMessages([]);
+    dispatchWorkspace({ type: "reset" });
+    setUploadedData({});
+    setUploadedFiles([]);
+    setConvertedData({});
+    setScanResults({});
+    setAlignmentResult(null);
+    if (statusCheckIntervalRef.current) {
+      clearInterval(statusCheckIntervalRef.current);
+      statusCheckIntervalRef.current = null;
+    }
+  }, []);
+
+  const {
+    activeChatId,
+    setActiveChatId,
+    isManualSwitch,
+    navigateToNewChat,
+    navigateToSession,
+    navigateToAutoCreatedSession,
+    clearSessionAndNavigateRoot,
+  } = useDecisionSessionRoute({
+    onResetForEmptyRoute: resetWorkspaceForSessionRoute,
+  });
 
   // 定义初始状态或使用重置函数
   const resetToInitialState = (keepSessionId: boolean = false) => {
-    setMessages([]);
-    setRecommendedModelName(null);
-    setRecommendedModelDesc(null);
-    setWorkflow([]);
-    setUploadedData({});
-    setIsRunning(false);
-    setModelTaskId(null);
-    setModelTaskStatus('idle');
-    setModelRunResult(null);
-    setModelRunError(null);
-    setRightPanelMode("form");
-    setCurrentTaskSpec(null);
-    setModelContract(null);
-    setAlignmentResult(null);
-    setIsAgentRunning(false);
-    setAgentStatusText("Agent 正在思考...");
-    setAgentStatusAnchorId(null);
-
-    if (statusCheckIntervalRef.current) {
-      clearInterval(statusCheckIntervalRef.current);
-    }
+    resetWorkspaceForSessionRoute();
 
     if (!keepSessionId) {
       setActiveChatId(null);
@@ -136,9 +150,7 @@ export default function IntelligentDecision() {
   };
 
   const handleCreateNewChat = () => {
-    isCreatingNewChat.current = true;
-    resetToInitialState(false);
-    navigate("/chat");
+    navigateToNewChat();
   };
 
   // 聊天窗口自动滚动到底部
@@ -251,25 +263,29 @@ export default function IntelligentDecision() {
     const persistedState = loadDecisionSessionStates()[activeChatId];
 
     if (currentSession?.recommendedModel) {
-      setRecommendedModelName(currentSession.recommendedModel.name);
-      setRecommendedModelDesc(currentSession.recommendedModel.description);
-      setWorkflow(currentSession.recommendedModel.workflow);
-      setCurrentTaskSpec(currentSession.taskSpec || null);
-      setModelContract(currentSession.modelContract || null);
+      patchWorkspace({
+        recommendedModelName: currentSession.recommendedModel.name,
+        recommendedModelDesc: currentSession.recommendedModel.description,
+        workflow: currentSession.recommendedModel.workflow,
+        currentTaskSpec: currentSession.taskSpec || null,
+        modelContract: currentSession.modelContract || null,
+      });
     }
 
     if (persistedState) {
-      setRecommendedModelName(persistedState.recommendedModelName);
-      setRecommendedModelDesc(persistedState.recommendedModelDesc);
-      setWorkflow(persistedState.workflow || []);
-      setCurrentTaskSpec(persistedState.currentTaskSpec || null);
-      setModelContract(persistedState.modelContract || null);
-      setModelTaskId(persistedState.modelTaskId || null);
-      setModelTaskStatus(persistedState.modelTaskStatus || "idle");
-      setModelRunResult(persistedState.modelRunResult || null);
-      setModelRunError(persistedState.modelRunError || null);
-      setRightPanelMode(persistedState.rightPanelMode || "form");
-      setIsRunning(persistedState.modelTaskStatus === "running");
+      patchWorkspace({
+        recommendedModelName: persistedState.recommendedModelName,
+        recommendedModelDesc: persistedState.recommendedModelDesc,
+        workflow: persistedState.workflow || [],
+        currentTaskSpec: persistedState.currentTaskSpec || null,
+        modelContract: persistedState.modelContract || null,
+        modelTaskId: persistedState.modelTaskId || null,
+        modelTaskStatus: persistedState.modelTaskStatus || "idle",
+        modelRunResult: persistedState.modelRunResult || null,
+        modelRunError: persistedState.modelRunError || null,
+        rightPanelMode: persistedState.rightPanelMode || "form",
+        isRunning: persistedState.modelTaskStatus === "running",
+      });
     }
 
     // 模型输入参数只在当前连续对话流程中保留，不跨会话与刷新恢复。
@@ -386,40 +402,6 @@ export default function IntelligentDecision() {
     return () => window.removeEventListener("click", handleClickOutside);
   }, []);
 
-  React.useEffect(() => {
-    if (isAutoSessionBootstrap.current) {
-      // 自动创建会话场景不走手动切换逻辑，避免 reset 清掉状态提示
-      if (routeSessionId) {
-        isAutoSessionBootstrap.current = false;
-      }
-      return;
-    }
-
-    if (isCreatingNewChat.current) {
-      // 等路由真正切到 /chat 后再恢复正常路由同步
-      if (!routeSessionId) {
-        if (activeChatId) {
-          setActiveChatId(null);
-        }
-        isManualSwitch.current = false;
-        isCreatingNewChat.current = false;
-      }
-      return;
-    }
-
-    if (!routeSessionId) {
-      if (activeChatId) {
-        resetToInitialState(false);
-      }
-      return;
-    }
-
-    if (routeSessionId !== activeChatId) {
-      isManualSwitch.current = true;
-      setActiveChatId(routeSessionId);
-    }
-  }, [routeSessionId, activeChatId]);
-
   // 重命名会话
   const handleRenameSession = async (
     sessionId: string,
@@ -460,8 +442,7 @@ export default function IntelligentDecision() {
     setSessionList((p) => p.filter((s) => s._id !== sessionId));
     removeDecisionSessionState(sessionId);
     if (activeChatId === sessionId) {
-      resetToInitialState(false);
-      navigate("/chat");
+      clearSessionAndNavigateRoot();
     }
 
     try {
@@ -489,10 +470,8 @@ export default function IntelligentDecision() {
         const data = await response.json();
 
         if (data.success && data.data._id) {
-          currentSessionId = data.data._id;
-          isAutoSessionBootstrap.current = true;
-          setActiveChatId(currentSessionId);
-          navigate(`/chat/${currentSessionId}`);
+          currentSessionId = data.data._id as string;
+          navigateToAutoCreatedSession(currentSessionId);
           // 更新左侧对话列表
           setSessionList((prev) => [data.data, ...prev]);
         } else {
@@ -500,19 +479,20 @@ export default function IntelligentDecision() {
         }
       } catch (err) {
         console.error("Error creating new session:", err);
-        setIsAgentRunning(false);
+        dispatchWorkspace({ type: "agent_error", statusText: "Agent 会话创建失败" });
         return;
       }
     }
-
-    setIsAgentRunning(true);
-    setAgentStatusText("Agent 正在理解你的问题...");
 
     // 为每次请求生成独立的 AI 消息
     // 先插入用户消息和一个空的工具消息
     const userMessageId = crypto.randomUUID();
     const toolMessageId = crypto.randomUUID();
-    setAgentStatusAnchorId(toolMessageId);
+    dispatchWorkspace({
+      type: "agent_start",
+      statusText: "Agent 正在理解你的问题...",
+      anchorId: toolMessageId,
+    });
     setMessages((prev) => [
       ...prev,
       { id: userMessageId, role: "user", content: prompt },
@@ -527,17 +507,7 @@ export default function IntelligentDecision() {
     ]);
 
     // 重置状态
-    setRecommendedModelName(null);
-    setRecommendedModelDesc(null);
-    setWorkflow([]);
-    setIsRunning(false);
-    setModelTaskId(null);
-    setModelTaskStatus('idle');
-    setModelRunResult(null);
-    setModelRunError(null);
-    setRightPanelMode("form");
-    setCurrentTaskSpec(null);
-    setModelContract(null);
+    dispatchWorkspace({ type: "clear_recommendation" });
 
     // 建立 SSE 连接（Node → Python → Agent）
     const es = new EventSource(
@@ -555,29 +525,27 @@ export default function IntelligentDecision() {
         console.log("SSE Payload:", payload);
 
         if (payload.type === "tool_call") {
-          setAgentStatusText("Agent 正在调用工具...");
+          dispatchWorkspace({ type: "agent_status", statusText: "Agent 正在调用工具..." });
         } else if (payload.type === "tool_result") {
-          setAgentStatusText("Agent 正在整理工具结果...");
+          dispatchWorkspace({ type: "agent_status", statusText: "Agent 正在整理工具结果..." });
         } else if (payload.type === "token") {
-          setAgentStatusText("Agent 正在生成回复...");
+          dispatchWorkspace({ type: "agent_status", statusText: "Agent 正在生成回复..." });
         } else if (payload.type === "final") {
-          setIsAgentRunning(false);
-          setAgentStatusText("Agent 已完成");
-          setAgentStatusAnchorId(null);
+          dispatchWorkspace({ type: "agent_done", statusText: "Agent 已完成" });
         }
 
         // 这些状态更新不应依赖消息归并逻辑，避免在早返回分支中被跳过
         if (payload.type === "task_spec_generated") {
           const taskSpec = payload.data;
           if (taskSpec && Object.keys(taskSpec).length > 0) {
-            setCurrentTaskSpec(taskSpec);
+            patchWorkspace({ currentTaskSpec: taskSpec });
           }
         }
 
         if (payload.type === "model_contract_generated") {
           const contract = payload.data?.Required_slots;
           if (contract && contract.length > 0) {
-            setModelContract(payload.data);
+            patchWorkspace({ modelContract: payload.data });
           }
         }
 
@@ -585,10 +553,12 @@ export default function IntelligentDecision() {
           payload.type === "tool_result" &&
           getPayloadToolKind(payload) === "search_most_model"
         ) {
-          setRecommendedModelName(payload.data?.name ?? "");
-          setRecommendedModelDesc(payload.data?.description ?? "");
-          setWorkflow(payload.data?.workflow ?? []);
-          setIsRunning(false);
+          patchWorkspace({
+            recommendedModelName: payload.data?.name ?? "",
+            recommendedModelDesc: payload.data?.description ?? "",
+            workflow: payload.data?.workflow ?? [],
+            isRunning: false,
+          });
 
           setSessionList((prev) =>
             prev.map((s) =>
@@ -733,10 +703,7 @@ export default function IntelligentDecision() {
     es.onerror = (err) => {
       console.error("[SSE error]", err);
       es.close();
-      setIsRunning(false);
-      setIsAgentRunning(false);
-      setAgentStatusText("Agent 运行中断，请重试");
-      setAgentStatusAnchorId(null);
+      dispatchWorkspace({ type: "agent_error", statusText: "Agent 运行中断，请重试" });
     };
 
     const getToolTitle = (toolKind: string) => {
@@ -1108,7 +1075,6 @@ export default function IntelligentDecision() {
           : statusPayload?.status ?? "Running";
 
       if (currentStatus === "Finished") {
-        setModelTaskStatus('completed');
         if (statusCheckIntervalRef.current) {
           clearInterval(statusCheckIntervalRef.current);
           statusCheckIntervalRef.current = null;
@@ -1121,32 +1087,34 @@ export default function IntelligentDecision() {
 
           if (resultData.success) {
             // 后端约定：输出在 data.result 中（每项包含 url）
-            setModelRunResult(resultData.data ?? null);
-            setRightPanelMode("execution");
+            dispatchWorkspace({ type: "run_complete", result: resultData.data ?? null });
           } else {
             throw new Error(resultData.message || "Failed to get result");
           }
         } catch (resultError) {
           console.error("Error fetching result:", resultError);
-          setModelTaskStatus('failed');
-          setModelRunError((resultError instanceof Error ? resultError.message : "Failed to fetch result"));
+          dispatchWorkspace({
+            type: "run_fail",
+            error: resultError instanceof Error ? resultError.message : "Failed to fetch result",
+          });
         }
       } else if (currentStatus === "Failed" || currentStatus === "Error") {
         console.error("Task execution failed with status:", currentStatus, "details:", statusPayload);
-        setModelTaskStatus('failed');
         if (statusCheckIntervalRef.current) {
           clearInterval(statusCheckIntervalRef.current);
           statusCheckIntervalRef.current = null;
         }
-        setModelRunError(statusPayload?.error || "Task execution failed");
+        dispatchWorkspace({ type: "run_fail", error: statusPayload?.error || "Task execution failed" });
       } else {
         // 其余状态继续轮询
-        setModelTaskStatus('running');
+        patchWorkspace({ modelTaskStatus: "running" });
       }
     } catch (error) {
       console.error("Error polling task status:", error);
-      setModelTaskStatus('failed');
-      setModelRunError(error instanceof Error ? error.message : "Failed to check task status");
+      dispatchWorkspace({
+        type: "run_fail",
+        error: error instanceof Error ? error.message : "Failed to check task status",
+      });
       if (statusCheckIntervalRef.current) {
         clearInterval(statusCheckIntervalRef.current);
         statusCheckIntervalRef.current = null;
@@ -1156,12 +1124,7 @@ export default function IntelligentDecision() {
 
   // 运行模型：发布任务，然后轮询状态直到完成
   const handleRun = async () => {
-    setIsRunning(true);
-    setModelTaskId(null);
-    setModelTaskStatus('running');
-    setModelRunResult(null);
-    setModelRunError(null);
-    setRightPanelMode("execution");
+    dispatchWorkspace({ type: "run_start" });
 
     // 自动滚动右侧面板到顶部，显示执行状态
     if (rightPanelScrollRef.current) {
@@ -1214,10 +1177,7 @@ export default function IntelligentDecision() {
         throw new Error("No taskId returned from backend");
       }
 
-      setModelTaskId(taskId);
-      setModelTaskStatus('running');
-      setIsRunning(false);
-      setRightPanelMode("execution");
+      dispatchWorkspace({ type: "run_task_created", taskId });
 
       if (activeChatId) {
         persistDecisionSessionState(activeChatId, {
@@ -1246,9 +1206,8 @@ export default function IntelligentDecision() {
       }, 2000);
     } catch (error) {
       console.error("Error running model:", error);
-      setModelRunError(error instanceof Error ? error.message : "Task publish failed, please retry.");
-      setIsRunning(false);
-      setModelTaskStatus('failed');
+      const errorMessage = error instanceof Error ? error.message : "Task publish failed, please retry.";
+      dispatchWorkspace({ type: "run_fail", error: errorMessage });
 
       if (activeChatId) {
         persistDecisionSessionState(activeChatId, {
@@ -1260,7 +1219,7 @@ export default function IntelligentDecision() {
           modelTaskId: null,
           modelTaskStatus: "failed",
           modelRunResult: null,
-          modelRunError: error instanceof Error ? error.message : "Task publish failed, please retry.",
+          modelRunError: errorMessage,
           rightPanelMode: "execution",
         });
       }
@@ -1309,9 +1268,7 @@ export default function IntelligentDecision() {
                 <button
                   className="flex-1 text-left truncate"
                   onClick={() => {
-                    isManualSwitch.current = true;
-                    setActiveChatId(session._id);
-                    navigate(`/chat/${session._id}`);
+                    navigateToSession(session._id);
                     setOpenSessionMenuId(null);
                   }}
                 >
@@ -1414,14 +1371,14 @@ export default function IntelligentDecision() {
                     </div>
                     {rightPanelMode === "execution" ? (
                       <button
-                        onClick={() => setRightPanelMode("form")}
+                        onClick={() => patchWorkspace({ rightPanelMode: "form" })}
                         className="px-3 py-1.5 rounded-md text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-200 disabled:text-gray-500 transition"
                       >
                         查看输入表单
                       </button>
                     ) : (
                       <button
-                        onClick={() => setRightPanelMode("execution")}
+                        onClick={() => patchWorkspace({ rightPanelMode: "execution" })}
                         disabled={
                           modelTaskStatus === "idle" &&
                           !modelRunResult &&
