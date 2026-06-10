@@ -27,7 +27,7 @@ export interface Message {
     content: string;
     type?: "text" | "tool" | "data"; // 区分消息类型
     tools?: ToolEvent[]; // 如果是tool类型存放工具数据
-    profile?: any; // 存放AI返回的分析结果
+    profile?: unknown; // 存放AI返回的分析结果
     isScanFinished?: boolean; // 标记扫描是否完成
     started?: boolean;
 }
@@ -50,4 +50,82 @@ export interface ToolEvent {
     | "tool_analyze_timeseries"
     | "tool_analyze_parameter"
     result?: any;
+}
+
+export type SimulationPlanStatus = "drafting" | "ready" | "running" | "done" | "failed";
+
+export type SimulationPlanSectionId = "goal" | "model" | "data" | "parameters" | "results";
+
+export interface SimulationPlanGoal {
+    objective: string;
+    studyArea: string;
+    timeHorizon: string;
+    assumptions: string[];
+    successCriteria: string[];
+}
+
+export interface SimulationPlanAlternativeModel {
+    name: string;
+    description?: string;
+    reason?: string;
+}
+
+export interface SimulationPlanModel {
+    recommendedName: string | null;
+    description: string;
+    alternatives: SimulationPlanAlternativeModel[];
+    contract: unknown | null;
+    workflow: WorkflowState[];
+}
+
+export type SimulationPlanInputKind = "file" | "text" | "number" | "parameter";
+
+export interface SimulationPlanInputSlot {
+    id: string;
+    name: string;
+    type: string;
+    kind: SimulationPlanInputKind;
+    description: string;
+    required: boolean;
+    value: string | number | null;
+    fileName?: string;
+    source?: string;
+}
+
+export interface SimulationPlanData {
+    slots: SimulationPlanInputSlot[];
+    notes: string;
+}
+
+export interface SimulationPlanParameters {
+    values: Record<string, string | number | boolean | null>;
+    notes: string;
+}
+
+export interface SimulationPlanResultOutput {
+    name: string;
+    url: string;
+    type?: string;
+}
+
+export interface SimulationPlanResult {
+    taskId: string | null;
+    status: string;
+    raw: unknown | null;
+    error: string | null;
+    outputs: SimulationPlanResultOutput[];
+}
+
+export interface SimulationPlan {
+    id: string;
+    title: string;
+    createdAt: string;
+    updatedAt: string;
+    status: SimulationPlanStatus;
+    goal: SimulationPlanGoal;
+    model: SimulationPlanModel;
+    data: SimulationPlanData;
+    parameters: SimulationPlanParameters;
+    result: SimulationPlanResult;
+    agentNotes: string;
 }

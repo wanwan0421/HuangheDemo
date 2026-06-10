@@ -1,22 +1,33 @@
 import React, { useState, useMemo } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { useNavigate, useParams } from "react-router-dom";
-import ChatInput from "../components/ChatInput";
-import { Earth, SquarePen, Search, Sparkles, Activity, MoreVertical, Info, Copy, Check, ScanSearch, Play, Columns2, Heart, Loader2 } from "lucide-react";
+import { SquarePen, Search, Sparkles, Activity, MoreVertical, Info, ScanSearch, Play, Columns2, Heart } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ModelExecuteProcess from "../components/ModelExecuteProcess";
-import ToolTimeline from "../components/ToolTimeline";
-import { FinalProfileCard } from "../components/ToolTimeline";
-import type { WorkflowState, Message} from "../types";
+import type { Message } from "../types";
 import TaskSpecCard from "../components/TaskSpecCard";
 import { RequirementTooltip, type ModelContractItem } from "../components/ModelContract";
-import MapboxViewer from "../components/mapbox";
 import { isModelFavorited, toggleFavoriteModel } from "../lib/userCenter.ts";
+import ChatPanel from "../components/ChatPanel";
+import DataScanModal from "../components/DataScanModal";
+import {
+  getMessageCopyText,
+  getPayloadToolKind,
+  normalizeHistoryTools,
+  normalizeMessageText,
+} from "../util/messageUtils";
+import {
+  loadDecisionSessionStates,
+  persistDecisionSessionState,
+  removeDecisionSessionState,
+} from "../util/sessionState";
+import {
+  createInitialDecisionWorkspaceState,
+  decisionWorkspaceReducer,
+  type DecisionWorkspaceState,
+} from "../util/decisionWorkspaceReducer";
+import { useDecisionSessionRoute } from "../util/useDecisionSessionRoute";
 
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
-const DECISION_SESSION_STATE_STORAGE_KEY = "geoagent_decision_session_state";
 
 const authFetch = (input: RequestInfo | URL, init?: RequestInit) => {
   return fetch(input, {
@@ -25,138 +36,44 @@ const authFetch = (input: RequestInfo | URL, init?: RequestInit) => {
   });
 };
 
-const TOOL_TITLE_MAP: Record<string, string> = {
-  search_relevant_indices: "指标库检索完成",
-  search_relevant_models: "模型库检索完成",
-  search_most_model: "模型推荐完成",
-  get_model_details: "详情读取完成",
-  tool_prepare_file: "数据准备完成",
-  tool_detect_format: "数据格式检测完成",
-  tool_analyze_raster: "栅格数据分析完成",
-  tool_analyze_vector: "矢量数据分析完成",
-  tool_analyze_table: "表格数据分析完成",
-  tool_analyze_timeseries: "时间序列数据分析完成",
-  tool_analyze_parameter: "参数数据分析完成",
-};
-
-const getPayloadToolKind = (payload: any): string => {
-  return String(payload?.tool ?? payload?.name ?? payload?.tool_name ?? "").trim();
-};
-
-const normalizeMessageText = (raw: any): string => {
-  if (typeof raw === "string") return raw;
-
-  if (Array.isArray(raw)) {
-    return raw
-      .map((item) => {
-        if (typeof item === "string") return item;
-        if (item && typeof item === "object") {
-          if (typeof item.text === "string") return item.text;
-          if (typeof item.content === "string") return item.content;
-          if (typeof item.value === "string") return item.value;
-        }
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n");
-  }
-
-  if (raw && typeof raw === "object") {
-    if (typeof raw.text === "string") return raw.text;
-    if (typeof raw.content === "string") return raw.content;
-  }
-
-  return "";
-};
-
-const normalizeHistoryTools = (message: any): NonNullable<Message["tools"]> => {
-  const source = Array.isArray(message?.tools)
-    ? message.tools
-    : Array.isArray(message?.tool_calls)
-      ? message.tool_calls
-      : Array.isArray(message?.toolCalls)
-        ? message.toolCalls
-        : [];
-
-  return source.map((tool: any) => {
-    const kind = String(tool?.tool ?? tool?.name ?? tool?.kind ?? "").trim();
-    const statusRaw = String(tool?.status ?? "success").toLowerCase();
-    const status = statusRaw === "running" || statusRaw === "error" ? statusRaw : "success";
-
-    return {
-      id: String(tool?.id ?? crypto.randomUUID()),
-      kind: (kind || "search_relevant_models") as any,
-      status,
-      title: TOOL_TITLE_MAP[kind] ?? tool?.title ?? "工具执行完成",
-      result: tool?.data ?? tool?.result ?? tool?.profile ?? tool?.output ?? null,
-    };
-  });
-};
-
-type DecisionSessionState = {
-  recommendedModelName: string | null;
-  recommendedModelDesc: string | null;
-  workflow: WorkflowState[];
-  currentTaskSpec: any | null;
-  modelContract: any | null;
-  modelTaskId: string | null;
-  modelTaskStatus: string;
-  modelRunResult: any | null;
-  modelRunError: string | null;
-  rightPanelMode: "form" | "execution";
-};
-
-const loadDecisionSessionStates = (): Record<string, DecisionSessionState> => {
-  try {
-    const raw = localStorage.getItem(DECISION_SESSION_STATE_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-};
-
-const persistDecisionSessionState = (sessionId: string, state: DecisionSessionState) => {
-  try {
-    const allStates = loadDecisionSessionStates();
-    allStates[sessionId] = state;
-    localStorage.setItem(DECISION_SESSION_STATE_STORAGE_KEY, JSON.stringify(allStates));
-  } catch (error) {
-    console.error("Persist decision session state failed", error);
-  }
-};
-
-const removeDecisionSessionState = (sessionId: string) => {
-  try {
-    const allStates = loadDecisionSessionStates();
-    if (!(sessionId in allStates)) return;
-    delete allStates[sessionId];
-    localStorage.setItem(DECISION_SESSION_STATE_STORAGE_KEY, JSON.stringify(allStates));
-  } catch (error) {
-    console.error("Remove decision session state failed", error);
-  }
-};
-
 export default function IntelligentDecision() {
-  const navigate = useNavigate();
-  const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
-
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const copyResetTimerRef = React.useRef<number | null>(null);
 
+  const [workspaceState, dispatchWorkspace] = React.useReducer(
+    decisionWorkspaceReducer,
+    undefined,
+    createInitialDecisionWorkspaceState,
+  );
+  const {
+    currentTaskSpec,
+    modelContract,
+    recommendedModelName,
+    recommendedModelDesc,
+    workflow,
+    isRunning,
+    modelTaskId,
+    modelTaskStatus,
+    modelRunResult,
+    modelRunError,
+    isAgentRunning,
+    agentStatusText,
+    agentStatusAnchorId,
+    rightPanelMode,
+  } = workspaceState;
+
+  const patchWorkspace = React.useCallback(
+    (patch: Partial<DecisionWorkspaceState>) => {
+      dispatchWorkspace({ type: "patch", patch });
+    },
+    [],
+  );
   // 当前任务需求
-  const [currentTaskSpec, setCurrentTaskSpec] = useState<any | null>(null);
   // 当前推荐模型要求
-  const [modelContract, setModelContract] = useState<any | null>(null);
 
   // 推荐的模型信息
-  const [recommendedModelName, setRecommendedModelName] = useState<string | null>(null);
-  const [recommendedModelDesc, setRecommendedModelDesc] = useState<string | null>(null);
   const [isRecommendedModelFavorited, setIsRecommendedModelFavorited] = useState(false);
-  const [workflow, setWorkflow] = useState<WorkflowState[]>([]);
 
   // 扫描数据状态
   const [isScanning, setIsScanning] = useState(false);
@@ -189,52 +106,42 @@ export default function IntelligentDecision() {
     );
 
   // 模型运行状态
-  const [isRunning, setIsRunning] = useState(false);
-  // @ts-ignore - taskId is stored for potential future use (debugging, recovery)
-  const [modelTaskId, setModelTaskId] = useState<string | null>(null);
-  const [modelTaskStatus, setModelTaskStatus] = useState<string>('idle'); // idle, running, completed, failed
-  const [modelRunResult, setModelRunResult] = useState<any | null>(null);
-  const [modelRunError, setModelRunError] = useState<string | null>(null);
-  const [isAgentRunning, setIsAgentRunning] = useState(false);
-  const [agentStatusText, setAgentStatusText] = useState("Agent 正在思考...");
-  const [agentStatusAnchorId, setAgentStatusAnchorId] = useState<string | null>(null);
-  const [rightPanelMode, setRightPanelMode] = useState<"form" | "execution">("form");
   const statusCheckIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const isHydratingSessionRef = React.useRef(false);
 
   // 设置对话列表状态
   const [sessionList, setSessionList] = useState<any[]>([]);
   const [openSessionMenuId, setOpenSessionMenuId] = useState<string | null>(null,);
-  // 记录当前操作是用户从左侧列表点击切换还是发送一条消息时自动创建新对话
-  const isManualSwitch = React.useRef(false);
-  // 避免点击 New Chat 时被旧路由参数瞬间回填到原会话
-  const isCreatingNewChat = React.useRef(false);
-  // 发送首条消息自动创建会话时，避免被路由同步误判为手动切换
-  const isAutoSessionBootstrap = React.useRef(false);
+
+  const resetWorkspaceForSessionRoute = React.useCallback(() => {
+    setMessages([]);
+    dispatchWorkspace({ type: "reset" });
+    setUploadedData({});
+    setUploadedFiles([]);
+    setConvertedData({});
+    setScanResults({});
+    setAlignmentResult(null);
+    if (statusCheckIntervalRef.current) {
+      clearInterval(statusCheckIntervalRef.current);
+      statusCheckIntervalRef.current = null;
+    }
+  }, []);
+
+  const {
+    activeChatId,
+    setActiveChatId,
+    isManualSwitch,
+    navigateToNewChat,
+    navigateToSession,
+    navigateToAutoCreatedSession,
+    clearSessionAndNavigateRoot,
+  } = useDecisionSessionRoute({
+    onResetForEmptyRoute: resetWorkspaceForSessionRoute,
+  });
 
   // 定义初始状态或使用重置函数
   const resetToInitialState = (keepSessionId: boolean = false) => {
-    setMessages([]);
-    setRecommendedModelName(null);
-    setRecommendedModelDesc(null);
-    setWorkflow([]);
-    setUploadedData({});
-    setIsRunning(false);
-    setModelTaskId(null);
-    setModelTaskStatus('idle');
-    setModelRunResult(null);
-    setModelRunError(null);
-    setRightPanelMode("form");
-    setCurrentTaskSpec(null);
-    setModelContract(null);
-    setAlignmentResult(null);
-    setIsAgentRunning(false);
-    setAgentStatusText("Agent 正在思考...");
-    setAgentStatusAnchorId(null);
-
-    if (statusCheckIntervalRef.current) {
-      clearInterval(statusCheckIntervalRef.current);
-    }
+    resetWorkspaceForSessionRoute();
 
     if (!keepSessionId) {
       setActiveChatId(null);
@@ -243,9 +150,7 @@ export default function IntelligentDecision() {
   };
 
   const handleCreateNewChat = () => {
-    isCreatingNewChat.current = true;
-    resetToInitialState(false);
-    navigate("/decision");
+    navigateToNewChat();
   };
 
   // 聊天窗口自动滚动到底部
@@ -325,31 +230,6 @@ export default function IntelligentDecision() {
     }
   };
 
-  const getMessageCopyText = (msg: Message) => {
-    const parts: string[] = [];
-    const textContent = msg.content?.trim();
-
-    if (textContent) {
-      parts.push(textContent);
-    }
-
-    if (Array.isArray(msg.tools) && msg.tools.length > 0) {
-      const toolText = msg.tools
-        .map((tool, index) => {
-          const title = tool.title || tool.kind || `工具${index + 1}`;
-          const resultText =
-            typeof tool.result === "string"
-              ? tool.result
-              : JSON.stringify(tool.result ?? {}, null, 2);
-          return `${title}\n${resultText}`;
-        })
-        .join("\n\n");
-      parts.push(toolText);
-    }
-
-    return parts.join("\n\n").trim();
-  };
-
   const handleCopyMessage = async (msg: Message) => {
     const text = getMessageCopyText(msg);
     if (!text) return;
@@ -383,25 +263,29 @@ export default function IntelligentDecision() {
     const persistedState = loadDecisionSessionStates()[activeChatId];
 
     if (currentSession?.recommendedModel) {
-      setRecommendedModelName(currentSession.recommendedModel.name);
-      setRecommendedModelDesc(currentSession.recommendedModel.description);
-      setWorkflow(currentSession.recommendedModel.workflow);
-      setCurrentTaskSpec(currentSession.taskSpec || null);
-      setModelContract(currentSession.modelContract || null);
+      patchWorkspace({
+        recommendedModelName: currentSession.recommendedModel.name,
+        recommendedModelDesc: currentSession.recommendedModel.description,
+        workflow: currentSession.recommendedModel.workflow,
+        currentTaskSpec: currentSession.taskSpec || null,
+        modelContract: currentSession.modelContract || null,
+      });
     }
 
     if (persistedState) {
-      setRecommendedModelName(persistedState.recommendedModelName);
-      setRecommendedModelDesc(persistedState.recommendedModelDesc);
-      setWorkflow(persistedState.workflow || []);
-      setCurrentTaskSpec(persistedState.currentTaskSpec || null);
-      setModelContract(persistedState.modelContract || null);
-      setModelTaskId(persistedState.modelTaskId || null);
-      setModelTaskStatus(persistedState.modelTaskStatus || "idle");
-      setModelRunResult(persistedState.modelRunResult || null);
-      setModelRunError(persistedState.modelRunError || null);
-      setRightPanelMode(persistedState.rightPanelMode || "form");
-      setIsRunning(persistedState.modelTaskStatus === "running");
+      patchWorkspace({
+        recommendedModelName: persistedState.recommendedModelName,
+        recommendedModelDesc: persistedState.recommendedModelDesc,
+        workflow: persistedState.workflow || [],
+        currentTaskSpec: persistedState.currentTaskSpec || null,
+        modelContract: persistedState.modelContract || null,
+        modelTaskId: persistedState.modelTaskId || null,
+        modelTaskStatus: persistedState.modelTaskStatus || "idle",
+        modelRunResult: persistedState.modelRunResult || null,
+        modelRunError: persistedState.modelRunError || null,
+        rightPanelMode: persistedState.rightPanelMode || "form",
+        isRunning: persistedState.modelTaskStatus === "running",
+      });
     }
 
     // 模型输入参数只在当前连续对话流程中保留，不跨会话与刷新恢复。
@@ -518,40 +402,6 @@ export default function IntelligentDecision() {
     return () => window.removeEventListener("click", handleClickOutside);
   }, []);
 
-  React.useEffect(() => {
-    if (isAutoSessionBootstrap.current) {
-      // 自动创建会话场景不走手动切换逻辑，避免 reset 清掉状态提示
-      if (routeSessionId) {
-        isAutoSessionBootstrap.current = false;
-      }
-      return;
-    }
-
-    if (isCreatingNewChat.current) {
-      // 等路由真正切到 /decision 后再恢复正常路由同步
-      if (!routeSessionId) {
-        if (activeChatId) {
-          setActiveChatId(null);
-        }
-        isManualSwitch.current = false;
-        isCreatingNewChat.current = false;
-      }
-      return;
-    }
-
-    if (!routeSessionId) {
-      if (activeChatId) {
-        resetToInitialState(false);
-      }
-      return;
-    }
-
-    if (routeSessionId !== activeChatId) {
-      isManualSwitch.current = true;
-      setActiveChatId(routeSessionId);
-    }
-  }, [routeSessionId, activeChatId]);
-
   // 重命名会话
   const handleRenameSession = async (
     sessionId: string,
@@ -592,8 +442,7 @@ export default function IntelligentDecision() {
     setSessionList((p) => p.filter((s) => s._id !== sessionId));
     removeDecisionSessionState(sessionId);
     if (activeChatId === sessionId) {
-      resetToInitialState(false);
-      navigate("/decision");
+      clearSessionAndNavigateRoot();
     }
 
     try {
@@ -621,10 +470,8 @@ export default function IntelligentDecision() {
         const data = await response.json();
 
         if (data.success && data.data._id) {
-          currentSessionId = data.data._id;
-          isAutoSessionBootstrap.current = true;
-          setActiveChatId(currentSessionId);
-          navigate(`/decision/${currentSessionId}`);
+          currentSessionId = data.data._id as string;
+          navigateToAutoCreatedSession(currentSessionId);
           // 更新左侧对话列表
           setSessionList((prev) => [data.data, ...prev]);
         } else {
@@ -632,19 +479,20 @@ export default function IntelligentDecision() {
         }
       } catch (err) {
         console.error("Error creating new session:", err);
-        setIsAgentRunning(false);
+        dispatchWorkspace({ type: "agent_error", statusText: "Agent 会话创建失败" });
         return;
       }
     }
-
-    setIsAgentRunning(true);
-    setAgentStatusText("Agent 正在理解你的问题...");
 
     // 为每次请求生成独立的 AI 消息
     // 先插入用户消息和一个空的工具消息
     const userMessageId = crypto.randomUUID();
     const toolMessageId = crypto.randomUUID();
-    setAgentStatusAnchorId(toolMessageId);
+    dispatchWorkspace({
+      type: "agent_start",
+      statusText: "Agent 正在理解你的问题...",
+      anchorId: toolMessageId,
+    });
     setMessages((prev) => [
       ...prev,
       { id: userMessageId, role: "user", content: prompt },
@@ -659,17 +507,7 @@ export default function IntelligentDecision() {
     ]);
 
     // 重置状态
-    setRecommendedModelName(null);
-    setRecommendedModelDesc(null);
-    setWorkflow([]);
-    setIsRunning(false);
-    setModelTaskId(null);
-    setModelTaskStatus('idle');
-    setModelRunResult(null);
-    setModelRunError(null);
-    setRightPanelMode("form");
-    setCurrentTaskSpec(null);
-    setModelContract(null);
+    dispatchWorkspace({ type: "clear_recommendation" });
 
     // 建立 SSE 连接（Node → Python → Agent）
     const es = new EventSource(
@@ -687,40 +525,40 @@ export default function IntelligentDecision() {
         console.log("SSE Payload:", payload);
 
         if (payload.type === "tool_call") {
-          setAgentStatusText("Agent 正在调用工具...");
+          dispatchWorkspace({ type: "agent_status", statusText: "Agent 正在调用工具..." });
         } else if (payload.type === "tool_result") {
-          setAgentStatusText("Agent 正在整理工具结果...");
+          dispatchWorkspace({ type: "agent_status", statusText: "Agent 正在整理工具结果..." });
         } else if (payload.type === "token") {
-          setAgentStatusText("Agent 正在生成回复...");
+          dispatchWorkspace({ type: "agent_status", statusText: "Agent 正在生成回复..." });
         } else if (payload.type === "final") {
-          setIsAgentRunning(false);
-          setAgentStatusText("Agent 已完成");
-          setAgentStatusAnchorId(null);
+          dispatchWorkspace({ type: "agent_done", statusText: "Agent 已完成" });
         }
 
         // 这些状态更新不应依赖消息归并逻辑，避免在早返回分支中被跳过
         if (payload.type === "task_spec_generated") {
           const taskSpec = payload.data;
           if (taskSpec && Object.keys(taskSpec).length > 0) {
-            setCurrentTaskSpec(taskSpec);
+            patchWorkspace({ currentTaskSpec: taskSpec });
           }
         }
 
         if (payload.type === "model_contract_generated") {
           const contract = payload.data?.Required_slots;
           if (contract && contract.length > 0) {
-            setModelContract(payload.data);
+            patchWorkspace({ modelContract: payload.data });
           }
         }
 
         if (
           payload.type === "tool_result" &&
-          getPayloadToolKind(payload) === "get_model_details"
+          getPayloadToolKind(payload) === "search_most_model"
         ) {
-          setRecommendedModelName(payload.data?.name ?? "");
-          setRecommendedModelDesc(payload.data?.description ?? "");
-          setWorkflow(payload.data?.workflow ?? []);
-          setIsRunning(false);
+          patchWorkspace({
+            recommendedModelName: payload.data?.name ?? "",
+            recommendedModelDesc: payload.data?.description ?? "",
+            workflow: payload.data?.workflow ?? [],
+            isRunning: false,
+          });
 
           setSessionList((prev) =>
             prev.map((s) =>
@@ -865,10 +703,7 @@ export default function IntelligentDecision() {
     es.onerror = (err) => {
       console.error("[SSE error]", err);
       es.close();
-      setIsRunning(false);
-      setIsAgentRunning(false);
-      setAgentStatusText("Agent 运行中断，请重试");
-      setAgentStatusAnchorId(null);
+      dispatchWorkspace({ type: "agent_error", statusText: "Agent 运行中断，请重试" });
     };
 
     const getToolTitle = (toolKind: string) => {
@@ -1240,7 +1075,6 @@ export default function IntelligentDecision() {
           : statusPayload?.status ?? "Running";
 
       if (currentStatus === "Finished") {
-        setModelTaskStatus('completed');
         if (statusCheckIntervalRef.current) {
           clearInterval(statusCheckIntervalRef.current);
           statusCheckIntervalRef.current = null;
@@ -1253,32 +1087,34 @@ export default function IntelligentDecision() {
 
           if (resultData.success) {
             // 后端约定：输出在 data.result 中（每项包含 url）
-            setModelRunResult(resultData.data ?? null);
-            setRightPanelMode("execution");
+            dispatchWorkspace({ type: "run_complete", result: resultData.data ?? null });
           } else {
             throw new Error(resultData.message || "Failed to get result");
           }
         } catch (resultError) {
           console.error("Error fetching result:", resultError);
-          setModelTaskStatus('failed');
-          setModelRunError((resultError instanceof Error ? resultError.message : "Failed to fetch result"));
+          dispatchWorkspace({
+            type: "run_fail",
+            error: resultError instanceof Error ? resultError.message : "Failed to fetch result",
+          });
         }
       } else if (currentStatus === "Failed" || currentStatus === "Error") {
         console.error("Task execution failed with status:", currentStatus, "details:", statusPayload);
-        setModelTaskStatus('failed');
         if (statusCheckIntervalRef.current) {
           clearInterval(statusCheckIntervalRef.current);
           statusCheckIntervalRef.current = null;
         }
-        setModelRunError(statusPayload?.error || "Task execution failed");
+        dispatchWorkspace({ type: "run_fail", error: statusPayload?.error || "Task execution failed" });
       } else {
         // 其余状态继续轮询
-        setModelTaskStatus('running');
+        patchWorkspace({ modelTaskStatus: "running" });
       }
     } catch (error) {
       console.error("Error polling task status:", error);
-      setModelTaskStatus('failed');
-      setModelRunError(error instanceof Error ? error.message : "Failed to check task status");
+      dispatchWorkspace({
+        type: "run_fail",
+        error: error instanceof Error ? error.message : "Failed to check task status",
+      });
       if (statusCheckIntervalRef.current) {
         clearInterval(statusCheckIntervalRef.current);
         statusCheckIntervalRef.current = null;
@@ -1288,12 +1124,7 @@ export default function IntelligentDecision() {
 
   // 运行模型：发布任务，然后轮询状态直到完成
   const handleRun = async () => {
-    setIsRunning(true);
-    setModelTaskId(null);
-    setModelTaskStatus('running');
-    setModelRunResult(null);
-    setModelRunError(null);
-    setRightPanelMode("execution");
+    dispatchWorkspace({ type: "run_start" });
 
     // 自动滚动右侧面板到顶部，显示执行状态
     if (rightPanelScrollRef.current) {
@@ -1346,10 +1177,7 @@ export default function IntelligentDecision() {
         throw new Error("No taskId returned from backend");
       }
 
-      setModelTaskId(taskId);
-      setModelTaskStatus('running');
-      setIsRunning(false);
-      setRightPanelMode("execution");
+      dispatchWorkspace({ type: "run_task_created", taskId });
 
       if (activeChatId) {
         persistDecisionSessionState(activeChatId, {
@@ -1378,9 +1206,8 @@ export default function IntelligentDecision() {
       }, 2000);
     } catch (error) {
       console.error("Error running model:", error);
-      setModelRunError(error instanceof Error ? error.message : "Task publish failed, please retry.");
-      setIsRunning(false);
-      setModelTaskStatus('failed');
+      const errorMessage = error instanceof Error ? error.message : "Task publish failed, please retry.";
+      dispatchWorkspace({ type: "run_fail", error: errorMessage });
 
       if (activeChatId) {
         persistDecisionSessionState(activeChatId, {
@@ -1392,7 +1219,7 @@ export default function IntelligentDecision() {
           modelTaskId: null,
           modelTaskStatus: "failed",
           modelRunResult: null,
-          modelRunError: error instanceof Error ? error.message : "Task publish failed, please retry.",
+          modelRunError: errorMessage,
           rightPanelMode: "execution",
         });
       }
@@ -1441,9 +1268,7 @@ export default function IntelligentDecision() {
                 <button
                   className="flex-1 text-left truncate"
                   onClick={() => {
-                    isManualSwitch.current = true;
-                    setActiveChatId(session._id);
-                    navigate(`/decision/${session._id}`);
+                    navigateToSession(session._id);
                     setOpenSessionMenuId(null);
                   }}
                 >
@@ -1499,123 +1324,16 @@ export default function IntelligentDecision() {
         </div>
       </aside>
 
-      {/* ------------------------------- Middle Chat Panel ------------------------------- */}
-      <main className="flex flex-1 flex-col min-w-[350px]">
-        <div
-          ref={scrollRef}
-          className="flex-1 p-6 overflow-y-auto bg-white min-h-0 [scrollbar-width:thin] [scrollbar-color:#e5e7eb_transparent]
-            [&::-webkit-scrollbar]:w-1
-            [&::-webkit-scrollbar-track]:bg-transparent
-            [&::-webkit-scrollbar-thumb]:bg-gray-200/50
-            hover:[&::-webkit-scrollbar-thumb]:bg-gray-300/60
-            [&::-webkit-scrollbar-thumb]:rounded-full"
-        >
-          {messages.length === 0 ? (
-            <div className="flex flex-col justify-center items-center h-full">
-              <p className="text-gray-400 text-center text-base">
-                👋 Enter your instructions to start the decision process
-                <br />
-                (example: help me predict land use change)
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col space-y-6">
-              {/* 用户消息 + LLM回答 */}
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`group flex ${
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  <div className="flex flex-col space-y-2 max-w-[85%]">
-                    {/* 渲染：用户消息 */}
-                    {msg.role === "user" && (
-                      <div className="p-3 rounded-lg bg-gray-200/50 text-black rounded-tr-none self-end">
-                        <p className="text-base">{msg.content}</p>
-                      </div>
-                    )}
-
-                    {(() => {
-                      const canCopy = getMessageCopyText(msg).length > 0;
-                      const copied = copiedMessageId === msg.id;
-
-                      return (
-                        <button
-                          type="button"
-                          disabled={!canCopy}
-                          onClick={() => handleCopyMessage(msg)}
-                          className={`inline-flex items-center gap-1 text-xs ${msg.role === "user" ? "self-end" : "self-start"} transition-all duration-150 ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"} ${
-                            canCopy
-                              ? "text-gray-600 hover:text-gray-900"
-                              : "text-gray-300 cursor-not-allowed"
-                          }`}
-                          aria-label="复制消息"
-                          title={canCopy ? "复制消息" : "暂无可复制内容"}
-                        >
-                          {copied ? <Check size={14} /> : <Copy size={14} />}
-                          <span>{copied ? "已复制" : "复制"}</span>
-                        </button>
-                      );
-                    })()}
-
-
-                    {/* 渲染AI消息区域 */}
-                    {msg.role === "AI" && (
-                      <div className="flex flex-col space-y-2 w-full max-w-4xl">
-                        {isAgentRunning && msg.id === agentStatusAnchorId && (
-                          <div className="inline-flex items-center gap-2 px-3 py-2 text-sm text-blue-700 self-start">
-                            <Loader2 size={14} className="animate-spin" />
-                            <span>{agentStatusText}</span>
-                          </div>
-                        )}
-
-                        {/* 渲染：AI 工具块 */}
-                        {msg.tools?.length && (
-                          <div className="self-start w-full">
-                            <div className="p-2 rounded-lg shadow-lg bg-blue-100/20 border border-blue-500 md:w-[800px]">
-                              <ToolTimeline msg={msg} />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* 渲染：AI 文本块 */}
-                        {msg.content && (
-                          <div className="p-4 text-black w-full">
-                            {/* 添加 prose 系列类名 */}
-                            <article
-                              className="prose max-w-none text-black
-                                **:text-black
-                                prose-headings:font-bold
-                                prose-h2:mt-8 prose-h2:mb-4
-                                prose-h3:mt-6
-                                prose-p:text-black
-                                prose-strong:text-black
-                                marker:text-black marker:font-semibold
-                                prose-table:border prose-table:rounded-xl
-                                prose-code:before:content-none prose-code:after:content-none
-                                prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
-                                prose-pre:bg-gray-100 prose-pre:p-4 prose-pre:rounded-lg prose-pre:overflow-x-auto
-                                prose-pre:text-sm prose-pre:text-black"
-                            >
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {msg.content}
-                              </ReactMarkdown>
-                            </article>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              <div className="h-4" />
-            </div>
-          )}
-        </div>
-        <ChatInput onSend={(msg) => handleSendMessage(msg)} />
-      </main>
+      <ChatPanel
+        messages={messages}
+        scrollRef={scrollRef}
+        copiedMessageId={copiedMessageId}
+        isAgentRunning={isAgentRunning}
+        agentStatusAnchorId={agentStatusAnchorId}
+        agentStatusText={agentStatusText}
+        onCopyMessage={handleCopyMessage}
+        onSendMessage={handleSendMessage}
+      />
 
       {/* ------------------------------- Right InputSlots + Result Panel ------------------------------- */}
       {/* Now, LLM don't recommend any model —— recommendedModelName: false; isRunning: false */}
@@ -1653,14 +1371,14 @@ export default function IntelligentDecision() {
                     </div>
                     {rightPanelMode === "execution" ? (
                       <button
-                        onClick={() => setRightPanelMode("form")}
+                        onClick={() => patchWorkspace({ rightPanelMode: "form" })}
                         className="px-3 py-1.5 rounded-md text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-200 disabled:text-gray-500 transition"
                       >
                         查看输入表单
                       </button>
                     ) : (
                       <button
-                        onClick={() => setRightPanelMode("execution")}
+                        onClick={() => patchWorkspace({ rightPanelMode: "execution" })}
                         disabled={
                           modelTaskStatus === "idle" &&
                           !modelRunResult &&
@@ -1951,247 +1669,22 @@ export default function IntelligentDecision() {
         )}
       </AnimatePresence>
 
-      {/* 扫描结果模态窗口 */}
-      <AnimatePresence>
-        {showScanModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-gray-900/40 flex items-center justify-center z-200"
-            onClick={() => setShowScanModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-lg shadow-2xl w-8/12 h-4/5 flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* 标题栏 */}
-              <div className="flex items-center justify-between p-5 bg-slate-900 rounded-t-lg">
-                <div className="flex items-center gap-2">
-                  <Earth size={24} className="text-white" />
-                  <h2 className="text-2xl font-bold text-white">
-                    Data scanning results
-                  </h2>
-                </div>
-                <button
-                  onClick={() => setShowScanModal(false)}
-                  className="text-white hover:text-gray-500 text-2xl"
-                >
-                  ×
-                </button>
-              </div>
-
-              {/* 内容区 */}
-              <div className="flex flex-1 overflow-hidden">
-                {/* 左侧：地图数据显示 */}
-                <div className="flex-1 min-h-0 rounded-lg overflow-hidden border border-gray-300 shadow-sm">
-                  {uploadedFiles.length > 0 &&
-                  getAllGeoJsonDataForMap.length > 0 ? (
-                    <MapboxViewer geoJsonDataArray={getAllGeoJsonDataForMap} />
-                  ) : (
-                    <div className="w-full h-full bg-gray-50 flex items-center justify-center">
-                      <p className="text-gray-400">
-                        Display the map here after uploading the file.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* 右侧：扫描结果 */}
-                <div className="w-[45%] flex flex-col">
-                  <div className="shrink-0 border-b border-gray-200">
-                    {scanResults && (
-                      <div className="flex overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar]:bg-slate-100 hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
-                        {uploadedFiles.map((file, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() =>
-                              setSelectedScanFile(`${file.name}-${idx}`)
-                            }
-                            className={`text-left px-4 py-2 transition-all ${
-                              selectedScanFile === `${file.name}-${idx}`
-                                ? "bg-slate-400"
-                                : "bg-gray-100 hover:border-gray-300"
-                            }`}
-                          >
-                            <div
-                              className={`text-xs text-gray-500 ${
-                                selectedScanFile === `${file.name}-${idx}`
-                                  ? "text-white"
-                                  : "text-gray-700"
-                              }`}
-                            >
-                              {file.name}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex-1 p-6 overflow-y-auto">
-                    {isScanning ? (
-                      <div className="flex items-center justify-center h-full">
-                        <div className="text-center">
-                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                          <p className="text-gray-600">Scanning...</p>
-                        </div>
-                      </div>
-                    ) : selectedScanFile && scanResults[selectedScanFile] ? (
-                      <div className="space-y-4">
-                        <FinalProfileCard
-                          profile={
-                            scanResults[selectedScanFile]?.profile ||
-                            scanResults[selectedScanFile]
-                          }
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-gray-500">
-                        <p>Select a file to view scan results</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* 底部对齐结论 + 操作栏 */}
-              <div className="flex flex-col md:flex-row md:h-50 gap-3 border-t border-gray-200 p-4 bg-white">
-                <div className="hidden md:block w-1 self-stretch rounded-full bg-gray-900" />
-                <div className="flex-1 min-w-0 rounded-lg p-2 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar]:bg-slate-100 hover:[&::-webkit-scrollbar-thumb]:bg-gray-400">
-                  {alignmentResult ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-base font-bold text-gray-900">
-                            Alignment conclusion
-                          </h3>
-                          {typeof alignmentResult.overall_score ===
-                            "number" && (
-                            <p className="text-[13px] font-semibold text-red-700">
-                              (Overall Score:
-                              <span className="font-semibold text-red-700">
-                                {(alignmentResult.overall_score * 100).toFixed(
-                                  0,
-                                )}
-                                %
-                              </span>
-                              )
-                            </p>
-                          )}
-                        </div>
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                            isNoGoAlignment
-                              ? "bg-red-100 text-red-700"
-                              : "bg-green-100 text-green-700"
-                          }`}
-                        >
-                          {isNoGoAlignment ? "NO-GO" : "GO"}
-                        </span>
-                      </div>
-
-                      {alignmentResult.summary && (
-                        <div className="text-xs text-gray-600 leading-relaxed">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {alignmentResult.summary}
-                          </ReactMarkdown>
-                        </div>
-                      )}
-
-                      {isNoGoAlignment &&
-                        Array.isArray(alignmentResult.blocking_issues) &&
-                        alignmentResult.blocking_issues.length > 0 && (
-                          <div className="rounded-md border border-red-200 bg-red-50 p-2">
-                            <p className="text-xs font-semibold text-red-700 mb-1">
-                              Blocking Issues
-                            </p>
-                            <ul className="list-disc pl-4 space-y-1">
-                              {alignmentResult.blocking_issues.map(
-                                (issue: string, idx: number) => (
-                                  <li
-                                    key={`blocking-${idx}`}
-                                    className="text-xs text-red-700 leading-relaxed"
-                                  >
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                      {issue}
-                                    </ReactMarkdown>
-                                  </li>
-                                ),
-                              )}
-                            </ul>
-                          </div>
-                        )}
-
-                      {!isNoGoAlignment && (
-                        <p className="text-xs text-green-700">
-                          Current can run now!
-                        </p>
-                      )}
-
-                      {isNoGoAlignment &&
-                        Array.isArray(
-                          alignmentResult.suggested_transformations,
-                        ) &&
-                        alignmentResult.suggested_transformations.length >
-                          0 && (
-                          <div>
-                            <p className="text-xs font-semibold text-gray-700 mb-1">
-                              Suggested Transformations
-                            </p>
-                            <ul className="list-disc pl-4 space-y-1">
-                              {alignmentResult.suggested_transformations.map(
-                                (transformation: string, idx: number) => (
-                                  <li
-                                    key={`transformation-${idx}`}
-                                    className="text-xs text-gray-600 leading-relaxed"
-                                  >
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                      {transformation}
-                                    </ReactMarkdown>
-                                  </li>
-                                ),
-                              )}
-                            </ul>
-                          </div>
-                        )}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-gray-500">
-                      Click Align to generate alignment conclusion.
-                    </p>
-                  )}
-                </div>
-
-                <div className="w-full shrink-0 md:w-40 flex flex-col justify-center gap-2">
-                  <button
-                    onClick={handleAlign}
-                    disabled={!activeChatId || isAligning || isScanning}
-                    title="对齐数据与模型要求"
-                    className="w-full px-3 py-3 bg-slate-900 text-white rounded-lg hover:bg-blue-800 disabled:bg-gray-300 transition-all"
-                  >
-                    {isAligning ? "Aligning..." : "Align"}
-                  </button>
-
-                  {isNoGoAlignment && (
-                    <button
-                      onClick={handleMapping}
-                      disabled={!activeChatId || isAligning || isScanning}
-                      title="映射数据为模型要求"
-                      className="w-full px-3 py-3 bg-slate-900 text-white rounded-lg hover:bg-blue-800 disabled:bg-gray-300 transition-all"
-                    >
-                      Map
-                    </button>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <DataScanModal
+        open={showScanModal}
+        uploadedFiles={uploadedFiles}
+        geoJsonDataForMap={getAllGeoJsonDataForMap}
+        scanResults={scanResults}
+        selectedScanFile={selectedScanFile}
+        isScanning={isScanning}
+        activeChatId={activeChatId}
+        isAligning={isAligning}
+        alignmentResult={alignmentResult}
+        isNoGoAlignment={isNoGoAlignment}
+        onClose={() => setShowScanModal(false)}
+        onSelectScanFile={setSelectedScanFile}
+        onAlign={handleAlign}
+        onMapping={handleMapping}
+      />
     </div>
   );
 }

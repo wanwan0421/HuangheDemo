@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import { useCallback, useEffect, useRef, useState } from "react";
+import "mapbox-gl/dist/mapbox-gl.css";
+import type { LngLatBoundsLike, Map as MapboxMap } from "mapbox-gl";
 
 interface GeoJsonDataItem {
   name: string;
@@ -11,315 +11,413 @@ interface MapboxViewerProps {
   geoJsonDataArray?: GeoJsonDataItem[];
 }
 
+type LayerEventHandler = {
+  type: string;
+  layerId: string;
+  handler: (event: any) => void;
+};
+
 const LAYER_COLORS = [
-  '#3b82f6', // 蓝色
-  '#ef4444', // 红色
-  '#10b981', // 绿色
-  '#f59e0b', // 橙色
-  '#8b5cf6', // 紫色
-  '#ec4899', // 粉色
-  '#06b6d4', // 青色
-  '#6366f1', // 靛色
+  "#3b82f6",
+  "#ef4444",
+  "#10b981",
+  "#f59e0b",
+  "#8b5cf6",
+  "#ec4899",
+  "#06b6d4",
+  "#6366f1",
 ];
 
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
+let mapboxModulePromise: Promise<typeof import("mapbox-gl")> | null = null;
 
-export default function MapboxViewer({ geoJsonDataArray }: MapboxViewerProps) {
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const loadedSourcesRef = useRef<Set<string>>(new Set());
+const loadMapbox = () => {
+  if (!mapboxModulePromise) {
+    mapboxModulePromise = import("mapbox-gl");
+  }
+  return mapboxModulePromise;
+};
 
-  useEffect(() => {
-    if (!mapContainer.current || map.current) return;
+export default function MapboxViewer({ geoJsonDataArray = [] }: MapboxViewerProps) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MapboxMap | null>(null);
+  const mapboxApiRef = useRef<any>(null);
+  const renderedRef = useRef<{
+    layers: string[];
+    sources: string[];
+    handlers: LayerEventHandler[];
+  }>({ layers: [], sources: [], handlers: [] });
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
 
-    // 初始化地图
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/light-v11',
-      center: [104.0, 35.0],
-      zoom: 4,
+  const clearRenderedData = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    renderedRef.current.handlers.forEach(({ type, layerId, handler }) => {
+      try {
+        map.off(type as any, layerId, handler);
+      } catch {
+        // The layer may have already been removed while the map was re-styling.
+      }
     });
 
-    // 添加导航控件
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    renderedRef.current.layers
+      .slice()
+      .reverse()
+      .forEach((layerId) => {
+        if (map.getLayer(layerId)) {
+          map.removeLayer(layerId);
+        }
+      });
 
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
+    renderedRef.current.sources.forEach((sourceId) => {
+      if (map.getSource(sourceId)) {
+        map.removeSource(sourceId);
       }
-    };
+    });
+
+    renderedRef.current = { layers: [], sources: [], handlers: [] };
   }, []);
 
-  const prevDataRef = useRef<string>('');
-  useEffect(() => {
-    if (!map.current || !geoJsonDataArray) return;
+  const registerLayer = useCallback((layerId: string) => {
+    renderedRef.current.layers.push(layerId);
+  }, []);
 
-    // 深度比较：只有内容真正变化时才重新加载
-    const currentData = JSON.stringify(geoJsonDataArray.map(d => d.name));
-    if (currentData === prevDataRef.current) {
-      return;
-    }
+  const registerSource = useCallback((sourceId: string) => {
+    renderedRef.current.sources.push(sourceId);
+  }, []);
 
-    prevDataRef.current = currentData;
+  const addLayerEvent = useCallback(
+    (type: string, layerId: string, handler: (event: any) => void) => {
+      const map = mapRef.current;
+      if (!map) return;
 
-    const loadData = () => {
-      if (!map.current?.isStyleLoaded()) {
-        setTimeout(loadData, 200);
-        return;
+      map.on(type as any, layerId, handler);
+      renderedRef.current.handlers.push({ type, layerId, handler });
+    },
+    [],
+  );
+
+  const addGeoJsonLayer = useCallback(
+    (geojson: any, index: number, fileName: string) => {
+      const map = mapRef.current;
+      const mapboxgl = mapboxApiRef.current;
+      if (!map || !mapboxgl || !geojson?.features?.length) return null;
+
+      const sourceId = `geojson-source-${index}`;
+      const layerId = `geojson-layer-${index}`;
+      const outlineId = `geojson-outline-${index}`;
+      const color = LAYER_COLORS[index % LAYER_COLORS.length];
+      const geometryType = geojson.features[0]?.geometry?.type;
+
+      map.addSource(sourceId, {
+        type: "geojson",
+        data: geojson,
+      });
+      registerSource(sourceId);
+
+      if (geometryType?.includes("Point")) {
+        map.addLayer({
+          id: layerId,
+          type: "circle",
+          source: sourceId,
+          paint: {
+            "circle-radius": 8,
+            "circle-color": color,
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#fff",
+            "circle-opacity": 0.85,
+          },
+        });
+        registerLayer(layerId);
+
+        addLayerEvent("mouseenter", layerId, () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+        addLayerEvent("mouseleave", layerId, () => {
+          map.getCanvas().style.cursor = "";
+        });
+        addLayerEvent("click", layerId, (event) => {
+          new mapboxgl.Popup()
+            .setLngLat(event.lngLat)
+            .setHTML(`<div class="text-sm font-medium">${escapeHtml(fileName)}</div>`)
+            .addTo(map);
+        });
+      } else if (geometryType?.includes("LineString")) {
+        map.addLayer({
+          id: layerId,
+          type: "line",
+          source: sourceId,
+          paint: {
+            "line-color": color,
+            "line-width": 3,
+            "line-opacity": 0.85,
+          },
+        });
+        registerLayer(layerId);
+      } else if (geometryType?.includes("Polygon")) {
+        map.addLayer({
+          id: layerId,
+          type: "fill",
+          source: sourceId,
+          paint: {
+            "fill-color": color,
+            "fill-opacity": 0.28,
+          },
+        });
+        registerLayer(layerId);
+
+        map.addLayer({
+          id: outlineId,
+          type: "line",
+          source: sourceId,
+          paint: {
+            "line-color": color,
+            "line-width": 2,
+            "line-opacity": 0.9,
+          },
+        });
+        registerLayer(outlineId);
+
+        addLayerEvent("mouseenter", layerId, () => {
+          map.setPaintProperty(layerId, "fill-opacity", 0.5);
+          map.getCanvas().style.cursor = "pointer";
+        });
+        addLayerEvent("mouseleave", layerId, () => {
+          map.setPaintProperty(layerId, "fill-opacity", 0.28);
+          map.getCanvas().style.cursor = "";
+        });
+        addLayerEvent("click", layerId, (event) => {
+          new mapboxgl.Popup()
+            .setLngLat(event.lngLat)
+            .setHTML(`<div class="text-sm font-medium">${escapeHtml(fileName)}</div>`)
+            .addTo(map);
+        });
       }
 
-      // 获取所有已存在的图层和数据源
-      const existingLayers = map.current!.getStyle().layers || [];
-      const existingSourceIds = new Set(Object.keys(map.current!.getStyle().sources || {}));
+      return getBounds(geojson);
+    },
+    [addLayerEvent, registerLayer, registerSource],
+  );
 
-      // 清除所有旧的相关图层
-      existingLayers.forEach((layer: any) => {
-        if (layer.id.includes('geojson-') || layer.id.includes('raster-')) {
-          try {
-            map.current!.removeLayer(layer.id);
-          } catch (e) {
-            console.warn(`Failed to remove layer ${layer.id}:`, e);
-          }
-        }
-      });
+  const addRasterLayer = useCallback(
+    (fileData: any, index: number) => {
+      const map = mapRef.current;
+      if (!map || !fileData?.fileUrl || !fileData?.conversion?.has_png) return null;
 
-      // 清除所有旧的相关数据源
-      existingSourceIds.forEach((sourceId: string) => {
-        if (sourceId.includes('geojson-source-') || sourceId.includes('raster-source-')) {
-          try {
-            map.current!.removeSource(sourceId);
-          } catch (e) {
-            console.warn(`Failed to remove source ${sourceId}:`, e);
-          }
-        }
-      });
+      const bounds = fileData.conversion.metadata?.bounds;
+      if (!Array.isArray(bounds) || bounds.length !== 4) return null;
 
-      // 清空跟踪集合
-      loadedSourcesRef.current.clear();
+      const [minX, minY, maxX, maxY] = bounds;
+      const sourceId = `raster-source-${index}`;
+      const layerId = `raster-layer-${index}`;
+      const imageUrl = fileData.fileUrl.replace(/\.(tif|tiff|geotiff)$/i, ".png");
 
-      // 收集所有地图边界，以便最后统一缩放
-      const allBounds: [[number, number], [number, number]][] = [];
-
-      // 为每个文件添加图层
-      geoJsonDataArray?.forEach((item, idx) => {
-        if (item.data?.conversion?.type === 'vector' && item.data?.conversion?.data) {
-          addGeoJsonLayer(item.data.conversion.data, idx, item.name);
-          const bounds = getBounds(item.data.conversion.data);
-          if (bounds) allBounds.push(bounds);
-        } else if (item.data?.conversion?.type === 'raster' && item.data?.conversion?.bounds_geojson) {
-          addRasterLayer(item.data, idx, item.name);
-          const bounds = getBounds(item.data.conversion.bounds_geojson);
-          if (bounds) allBounds.push(bounds);
-        }
-      });
-
-      // 统一缩放到所有数据范围
-      if (allBounds.length > 0) {
-        const combinedBounds = mergeBounds(allBounds);
-        map.current?.fitBounds(combinedBounds, { padding: 50, maxZoom: 15 });
-      }
-    };
-
-    loadData();
-  }, [geoJsonDataArray]);
-
-  const addGeoJsonLayer = (geojson: any, index: number, fileName: string) => {
-    if (!map.current || !geojson?.features?.length) return;
-
-    const sourceId = `geojson-source-${index}`;
-    const layerId = `geojson-layer-${index}`;
-    const outlineId = `geojson-outline-${index}`;
-    const color = LAYER_COLORS[index % LAYER_COLORS.length];
-
-    // 检查数据源是否已存在
-    if (loadedSourcesRef.current.has(sourceId)) {
-      console.warn(`Source ${sourceId} already loaded, skipping...`);
-      return;
-    }
-
-    // 添加数据源
-    map.current.addSource(sourceId, {
-      type: 'geojson',
-      data: geojson,
-    });
-
-    const geometryType = geojson.features[0]?.geometry?.type;
-
-    if (geometryType?.includes('Point')) {
-      map.current.addLayer({
-        id: layerId,
-        type: 'circle',
-        source: sourceId,
-        paint: {
-          'circle-radius': 8,
-          'circle-color': color,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#fff',
-          'circle-opacity': 0.8,
-        },
-      });
-
-      // 添加悬停效果
-      map.current.on('mouseenter', layerId, () => {
-        map.current!.getCanvas().style.cursor = 'pointer';
-      });
-      map.current.on('mouseleave', layerId, () => {
-        map.current!.getCanvas().style.cursor = '';
-      });
-
-      // 点击显示文件名
-      map.current.on('click', layerId, (e) => {
-        new mapboxgl.Popup()
-          .setLngLat(e.lngLat)
-          .setHTML(`<div class="text-sm font-medium">${fileName}</div>`)
-          .addTo(map.current!);
-      });
-
-    } else if (geometryType?.includes('LineString')) {
-      map.current.addLayer({
-        id: layerId,
-        type: 'line',
-        source: sourceId,
-        paint: {
-          'line-color': color,
-          'line-width': 3,
-          'line-opacity': 0.8,
-        },
-      });
-
-    } else if (geometryType?.includes('Polygon')) {
-      // 填充面
-      map.current.addLayer({
-        id: layerId,
-        type: 'fill',
-        source: sourceId,
-        paint: {
-          'fill-color': color,
-          'fill-opacity': 0.3,
-        },
-      });
-
-      // 边框线
-      map.current.addLayer({
-        id: outlineId,
-        type: 'line',
-        source: sourceId,
-        paint: {
-          'line-color': color,
-          'line-width': 2,
-          'line-opacity': 0.8,
-        },
-      });
-
-      // 悬停时加深颜色
-      map.current.on('mouseenter', layerId, () => {
-        map.current!.setPaintProperty(layerId, 'fill-opacity', 0.6);
-        map.current!.getCanvas().style.cursor = 'pointer';
-      });
-      map.current.on('mouseleave', layerId, () => {
-        map.current!.setPaintProperty(layerId, 'fill-opacity', 0.3);
-        map.current!.getCanvas().style.cursor = '';
-      });
-
-      // 点击显示文件名
-      map.current.on('click', layerId, (e) => {
-        new mapboxgl.Popup()
-          .setLngLat(e.lngLat)
-          .setHTML(`<div class="text-sm font-medium">${fileName}</div>`)
-          .addTo(map.current!);
-      });
-    }
-  };
-
-  const addRasterLayer = async (fileData: any, index: number, _fileName: string) => {
-    if (!map.current || !fileData?.fileUrl) return;
-
-    const sourceId = `raster-source-${index}`;
-    const layerId = `raster-layer-${index}`;
-
-    if (loadedSourcesRef.current.has(sourceId)) return;
-
-    if (fileData.conversion.type === "raster" && fileData.conversion.has_png) {
-      // png路径
-      const imageUrl = `${fileData.fileUrl.replace(/\.(tif|tiff|geotiff)$/i, ".png")}`;
-
-      // 精准坐标
-      const [minX, minY, maxX, maxY] = fileData.conversion.metadata.bounds;
-
-      // 添加图像源
-      map.current.addSource(sourceId, {
+      map.addSource(sourceId, {
         type: "image",
         url: imageUrl,
         coordinates: [
-          [minX, maxY], // 左上
-          [maxX, maxY], // 右上
-          [maxX, minY], // 右下
-          [minX, minY], // 左下
+          [minX, maxY],
+          [maxX, maxY],
+          [maxX, minY],
+          [minX, minY],
         ],
       });
+      registerSource(sourceId);
 
-      // 添加图像图层
-      map.current.addLayer(
-        {
-          id: layerId,
-          type: "raster",
-          source: sourceId,
-          paint: {
-            "raster-opacity": 1.0,
-          },
+      map.addLayer({
+        id: layerId,
+        type: "raster",
+        source: sourceId,
+        paint: {
+          "raster-opacity": 1,
         },
-        // 把栅格图层放在矢量图层下面
-        // map.current.getStyle().layers?.[0]?.id,
-      );
+      });
+      registerLayer(layerId);
 
-      map.current.fitBounds([[minX, minY], [maxX, maxY]]);
-      loadedSourcesRef.current.add(sourceId);
-    }
-  };
+      return [
+        [minX, minY],
+        [maxX, maxY],
+      ] as [[number, number], [number, number]];
+    },
+    [registerLayer, registerSource],
+  );
 
-  const getBounds = (geojson: any): [[number, number], [number, number]] | null => {
-    let minLng = Infinity, minLat = Infinity;
-    let maxLng = -Infinity, maxLat = -Infinity;
+  const renderDataLayers = useCallback(
+    (items: GeoJsonDataItem[]) => {
+      const map = mapRef.current;
+      if (!map || !map.isStyleLoaded()) return;
 
-    const processCoords = (coords: any): void => {
-      if (typeof coords[0] === 'number') {
-        minLng = Math.min(minLng, coords[0]);
-        maxLng = Math.max(maxLng, coords[0]);
-        minLat = Math.min(minLat, coords[1]);
-        maxLat = Math.max(maxLat, coords[1]);
-      } else {
-        coords.forEach(processCoords);
+      clearRenderedData();
+
+      const allBounds: Array<[[number, number], [number, number]]> = [];
+
+      items.forEach((item, index) => {
+        const conversion = item.data?.conversion;
+
+        if (conversion?.type === "vector" && conversion?.data) {
+          const bounds = addGeoJsonLayer(conversion.data, index, item.name);
+          if (bounds) allBounds.push(bounds);
+        }
+
+        if (conversion?.type === "raster") {
+          const rasterBounds = addRasterLayer(item.data, index);
+          if (rasterBounds) allBounds.push(rasterBounds);
+        }
+      });
+
+      if (allBounds.length > 0) {
+        map.fitBounds(mergeBounds(allBounds), {
+          padding: 50,
+          maxZoom: 15,
+          duration: 0,
+        });
+      }
+
+      requestAnimationFrame(() => map.resize());
+    },
+    [addGeoJsonLayer, addRasterLayer, clearRenderedData],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    let resizeObserver: ResizeObserver | null = null;
+    let removeResizeListener = () => {};
+
+    const initMap = async () => {
+      if (!mapContainerRef.current || mapRef.current) return;
+
+      try {
+        const mapboxModule = await loadMapbox();
+        if (cancelled || !mapContainerRef.current) return;
+
+        const mapboxgl = mapboxModule.default;
+        mapboxApiRef.current = mapboxgl;
+        mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || "";
+
+        const map = new mapboxgl.Map({
+          container: mapContainerRef.current,
+          style: "mapbox://styles/mapbox/light-v11",
+          center: [104, 35],
+          zoom: 4,
+          attributionControl: false,
+          fadeDuration: 0,
+          antialias: false,
+          dragRotate: false,
+          pitchWithRotate: false,
+          touchPitch: false,
+        });
+
+        mapRef.current = map;
+        map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+
+        const resizeMap = () => {
+          map.resize();
+        };
+
+        resizeObserver = new ResizeObserver(() => {
+          requestAnimationFrame(resizeMap);
+        });
+        resizeObserver.observe(mapContainerRef.current);
+
+        window.addEventListener("resize", resizeMap);
+        removeResizeListener = () => window.removeEventListener("resize", resizeMap);
+
+        map.once("load", () => {
+          if (cancelled) return;
+          setLoadState("ready");
+          requestAnimationFrame(resizeMap);
+        });
+
+        map.once("error", (event) => {
+          console.warn("Mapbox failed to load", event?.error || event);
+          if (!cancelled) setLoadState("error");
+        });
+      } catch (error) {
+        console.warn("Failed to initialize Mapbox", error);
+        if (!cancelled) setLoadState("error");
       }
     };
 
-    geojson.features?.forEach((f: any) => {
-      processCoords(f.geometry.coordinates);
-    });
+    void initMap();
 
-    return minLng !== Infinity 
-      ? [[minLng, minLat], [maxLng, maxLat]]
-      : null;
-  };
+    return () => {
+      cancelled = true;
+      removeResizeListener();
+      resizeObserver?.disconnect();
+      clearRenderedData();
+      mapRef.current?.remove();
+      mapRef.current = null;
+      mapboxApiRef.current = null;
+    };
+  }, [clearRenderedData]);
 
-  const mergeBounds = (boundsList: [[number, number], [number, number]][]): [[number, number], [number, number]] => {
-    let minLng = Infinity, minLat = Infinity;
-    let maxLng = -Infinity, maxLat = -Infinity;
+  useEffect(() => {
+    if (loadState !== "ready") return;
+    renderDataLayers(geoJsonDataArray);
+  }, [geoJsonDataArray, loadState, renderDataLayers]);
 
-    boundsList.forEach(([sw, ne]) => {
-      minLng = Math.min(minLng, sw[0]);
-      minLat = Math.min(minLat, sw[1]);
-      maxLng = Math.max(maxLng, ne[0]);
-      maxLat = Math.max(maxLat, ne[1]);
-    });
-
-    return [[minLng, minLat], [maxLng, maxLat]];
-  };
   return (
-    <div 
-      ref={mapContainer} 
-      className="w-full h-full"
-      style={{ minHeight: '400px' }}
-    />
+    <div className="relative h-full w-full min-h-[240px] overflow-hidden bg-sky-50">
+      <div ref={mapContainerRef} className="h-full w-full" />
+      {loadState !== "ready" && (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center bg-sky-50 text-sm text-slate-500">
+          {loadState === "error" ? "地图加载失败，请检查 Mapbox Token 或网络连接" : "地图加载中..."}
+        </div>
+      )}
+    </div>
   );
+}
+
+function getBounds(geojson: any): [[number, number], [number, number]] | null {
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+
+  const processCoords = (coords: any): void => {
+    if (!Array.isArray(coords) || coords.length === 0) return;
+
+    if (typeof coords[0] === "number" && typeof coords[1] === "number") {
+      minLng = Math.min(minLng, coords[0]);
+      maxLng = Math.max(maxLng, coords[0]);
+      minLat = Math.min(minLat, coords[1]);
+      maxLat = Math.max(maxLat, coords[1]);
+      return;
+    }
+
+    coords.forEach(processCoords);
+  };
+
+  geojson.features?.forEach((feature: any) => {
+    processCoords(feature?.geometry?.coordinates);
+  });
+
+  return minLng !== Infinity ? [[minLng, minLat], [maxLng, maxLat]] : null;
+}
+
+function mergeBounds(
+  boundsList: Array<[[number, number], [number, number]]>,
+): LngLatBoundsLike {
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+
+  boundsList.forEach(([sw, ne]) => {
+    minLng = Math.min(minLng, sw[0]);
+    minLat = Math.min(minLat, sw[1]);
+    maxLng = Math.max(maxLng, ne[0]);
+    maxLat = Math.max(maxLat, ne[1]);
+  });
+
+  return [[minLng, minLat], [maxLng, maxLat]];
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }

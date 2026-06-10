@@ -1,5 +1,5 @@
 import { useOutletContext } from "react-router-dom";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { ChevronDown, Search, Loader2, Mail, Heart } from "lucide-react";
 import TagRecords, { buildMenuData, type MenuDataItem, type MenuLeafItem } from "../util/record";
 import { getFavoriteModels, toggleFavoriteModel, type FavoriteModel } from "../lib/userCenter.ts";
@@ -82,7 +82,7 @@ export default function Resources() {
     setFavoriteModelNames(new Set(favorites.map((item: FavoriteModel) => item.name)));
   }, []);
 
-  const inferResourceTypeByTopMenu = (title: string): "models" | "methods" => {
+  const inferResourceTypeByTopMenu = React.useCallback((title: string): "models" | "methods" => {
     const normalizedTitle = title.toLowerCase();
     if (title.includes("方法") || normalizedTitle.includes("method")) {
       return "methods";
@@ -91,7 +91,7 @@ export default function Resources() {
       return "models";
     }
     return activeResourceType;
-  };
+  }, [activeResourceType]);
 
   // 处理搜索操作，包括分类以及关键字查询
   const onSearch = () => {
@@ -113,9 +113,6 @@ export default function Resources() {
       selectedMenuId = level4.id || null;
     }
 
-    console.log("选中的最终标签 (用于后端查询):", selectedMenuId);
-    console.log("搜索关键字：", inputValue);
-
     // 根据当前资源类型调用对应的获取函数
     if (activeResourceType === "methods") {
       fetchAndSetMethods([selectedMenuId || ""], inputValue);
@@ -126,16 +123,16 @@ export default function Resources() {
 
   const pageSize = 10;
   const [currentPage, setCurrentPage] = useState(1);
-  const totalPages = Math.ceil(resourceList.length / pageSize);
+  const totalPages = useMemo(() => Math.ceil(resourceList.length / pageSize), [resourceList.length]);
 
   // 当前页展示的数据
-  const currentData = resourceList.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize
+  const currentData = useMemo(
+    () => resourceList.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [currentPage, resourceList],
   );
 
   // 获取模型资源
-  const fetchResources = async (filter: ResourceFilter) => {
+  const fetchResources = React.useCallback(async (filter: ResourceFilter) => {
     const { categoryId, keyword } = filter;
 
     const queryParams = new URLSearchParams();
@@ -156,10 +153,10 @@ export default function Resources() {
     } catch (error) {
       return { data: [], total: 0 };
     }
-  };
+  }, []);
 
   // 执行获取模型资源以及设置状态
-  const fetchAndSetResources = async (
+  const fetchAndSetResources = React.useCallback(async (
     categoryId: string[] | [],
     keyword: string
   ) => {
@@ -173,10 +170,10 @@ export default function Resources() {
 
     setResourceList(data);
     setLoading(false);
-  };
+  }, [fetchResources]);
 
   // 获取方法资源
-  const fetchMethods = async (filter: ResourceFilter) => {
+  const fetchMethods = React.useCallback(async (filter: ResourceFilter) => {
     const { categoryId, keyword } = filter;
 
     const queryParams = new URLSearchParams();
@@ -186,7 +183,6 @@ export default function Resources() {
     if (keyword) {
       queryParams.append("keyword", keyword);
     }
-    console.log("fetchMethods - queryParams:", queryParams.toString());
 
     const url = `${BACK_URL}/resource/findMethods?${queryParams.toString()}`;
 
@@ -198,10 +194,10 @@ export default function Resources() {
     } catch (error) {
       return { data: [], total: 0 };
     }
-  };
+  }, []);
 
   // 执行获取方法资源以及设置状态
-  const fetchAndSetMethods = async (
+  const fetchAndSetMethods = React.useCallback(async (
     categoryId: string[] | [],
     keyword: string
   ) => {
@@ -215,10 +211,10 @@ export default function Resources() {
 
     setResourceList(data);
     setLoading(false);
-  };
+  }, [fetchMethods]);
 
   // 处理第四级目录
-  const clickForActiveAndFetchResources = (
+  const clickForActiveAndFetchResources = React.useCallback((
     parentIndex: number | null,
     childIndex: number | null,
     subChildIndex: number | null,
@@ -242,7 +238,7 @@ export default function Resources() {
     } else {
       fetchFn([node.id], inputValue);
     }
-  };
+  }, [activeResourceType, fetchAndSetMethods, fetchAndSetResources, inputValue]);
 
   // 第二级和第三级目录的初始状态
   const handleInitialToggle = (data: MenuDataItem[]) => {
@@ -266,9 +262,9 @@ export default function Resources() {
     return { initialLevel2, initialLevel3 };
   };
 
-  const {initialLevel2, initialLevel3} = handleInitialToggle(menuData);
-  const [level2Open, setLevel2Open] = useState<{ [key: string]: boolean }>(initialLevel2); // 用于控制第二级目录展开/折叠的状态
-  const [level3Open, setLevel3Open] = useState<{ [key: string]: boolean }>(initialLevel3); // 用于控制第三级目录展开/折叠的状态
+  const {initialLevel2, initialLevel3} = useMemo(() => handleInitialToggle(menuData), []);
+  const [level2Open, setLevel2Open] = useState<{ [key: string]: boolean }>(() => initialLevel2); // 用于控制第二级目录展开/折叠的状态
+  const [level3Open, setLevel3Open] = useState<{ [key: string]: boolean }>(() => initialLevel3); // 用于控制第三级目录展开/折叠的状态
 
   // 处理第二级目录展开/折叠
   const handleLevlel2Toggle = (parentIndex: number, childIndex: number) => {
@@ -306,7 +302,7 @@ export default function Resources() {
       subSubChild: null,
     });
 
-  }, [refreshFavoriteModels]);
+  }, [fetchAndSetResources, refreshFavoriteModels]);
 
   const handleToggleFavoriteModel = async (item: ResourceItem) => {
     const favorited = await toggleFavoriteModel({

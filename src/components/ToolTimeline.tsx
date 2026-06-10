@@ -27,15 +27,69 @@ function StatBadge({ label, value }: { label: string; value: any }) {
 }
 
 // 渲染工具事件结果
+const DETAIL_IN_RIGHT_PANEL_TOOLS = new Set([
+  "search_most_model",
+  "get_model_details",
+]);
+
+const RESULT_FIELD_LABELS: Record<string, string> = {
+  status: "状态",
+  fileName: "文件",
+  file_type: "类型",
+  primary_file: "主文件",
+  file_path: "路径",
+  count: "数量",
+  total: "总数",
+};
+
+function formatResultValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return `${value.length} 项`;
+  return null;
+}
+
+function getResultSummaryEntries(result: unknown) {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return [];
+  const record = result as Record<string, unknown>;
+
+  return Object.keys(RESULT_FIELD_LABELS)
+    .map((key) => {
+      const value = formatResultValue(record[key]);
+      return value ? { key, label: RESULT_FIELD_LABELS[key], value } : null;
+    })
+    .filter(Boolean)
+    .slice(0, 4) as Array<{ key: string; label: string; value: string }>;
+}
+
 function renderResult(e: ToolEvent) {
+  if (DETAIL_IN_RIGHT_PANEL_TOOLS.has(e.kind)) {
+    return null;
+  }
+
+  if (e.status === "error" && e.result) {
+    const errorMsg =
+      typeof e.result === "string"
+        ? e.result
+        : e.result?.error?.message || JSON.stringify(e.result);
+
+    return (
+      <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm leading-relaxed text-red-700 wrap-break-word">
+        {errorMsg}
+      </div>
+    );
+  }
+
   // 指标库：只显示 name_en / name_cn
   if (e.kind === "search_relevant_indices" && Array.isArray(e.result?.indices)) {
     return (
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-1.5">
         {e.result.indices.map((i: any, idx: number) => (
           <span
             key={idx}
-            className="inline-flex items-center bg-blue-800 text-white px-2 py-1 rounded text-sm whitespace-nowrap"
+            className="inline-flex max-w-full items-center rounded-md border border-blue-100 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700"
+            title={i.name_cn || i.name_en}
           >
             {i.name_cn || i.name_en}
           </span>
@@ -47,11 +101,12 @@ function renderResult(e: ToolEvent) {
   // 模型库：只显示 modelName
   if (e.kind === "search_relevant_models" && Array.isArray(e.result?.models)) {
     return (
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-1.5 flex-wrap">
         {e.result.models.map((m: any, idx: number) => (
           <span
             key={idx}
-            className="inline-flex items-center bg-blue-800 text-white px-2 py-1 rounded text-sm whitespace-nowrap"
+            className="inline-flex max-w-full items-center rounded-md border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-medium text-gray-900"
+            title={m.modelName}
           >
             {m.modelName}
           </span>
@@ -60,18 +115,36 @@ function renderResult(e: ToolEvent) {
     );
   }
 
-  if (e.status === "error" && e.result) {
-    const errorMsg =
-      typeof e.result === "string"
-        ? e.result
-        : e.result?.error?.message || JSON.stringify(e.result);
-
+  if (typeof e.result === "string") {
     return (
-      <div className="bg-red-50 border border-red-100 text-red-700 px-3 py-2 rounded-md text-sm font-mono break-all leading-relaxed">
-        {errorMsg}
+      <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm leading-relaxed text-gray-900">
+        {e.result}
       </div>
     );
   }
+
+  const summaryEntries = getResultSummaryEntries(e.result);
+
+  if (summaryEntries.length > 0) {
+    return (
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {summaryEntries.map((item) => (
+          <div
+            key={item.key}
+            className="min-w-0 rounded-md border border-blue-100 bg-blue-50 px-3 py-2"
+          >
+            <div className="text-xs font-bold text-blue-500">
+              {item.label}
+            </div>
+            <div className="truncate text-sm font-semibold text-slate-800" title={item.value}>
+              {item.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -621,67 +694,133 @@ export function FinalProfileCard({ profile }: { profile: any }) {
   return renderFinalProfile(profile);
 }
 
-export default function ToolTimeline({ msg }: { msg: any }) {
+type ToolTimelineProps = {
+  msg: {
+    tools?: ToolEvent[];
+    profile?: unknown;
+  };
+  className?: string;
+};
+
+export default function ToolTimeline({
+  msg,
+  className = "",
+}: ToolTimelineProps) {
   const events = msg.tools || [];
   const finalProfile = msg.profile;
+  const hasFinalProfile = finalProfile !== null && finalProfile !== undefined;
 
   return (
-    <div className="relative space-y-4 p-2">
-      <AnimatePresence>
-        {events.map((event: ToolEvent) => (
-          <motion.div
-            key={event.id}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="relative flex gap-2"
-          >
-            {/* 状态图标 */}
-            <div className="relative z-10">
-              <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                  event.status === "running"
-                    ? "bg-yellow-100 text-yellow-600"
-                    : event.status === "success"
-                    ? "bg-green-100 text-green-600"
-                    : "bg-red-100 text-red-600"
-                }`}
-              >
-                {event.status === "running" && (
-                  <Loader2 size={16} className="animate-spin" />
-                )}
-                {event.status === "success" && <CheckCircle2 size={16} />}
-                {event.status === "error" && <XCircle size={16} />}
+    <div
+      className={`w-full rounded-xl border border-blue-200 bg-white p-4 shadow-sm ${className}`}
+    >
+      {(events.length > 0 || hasFinalProfile) && (
+        <div>
+          {events.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 mb-1">
+                <ShieldCheck size={20} className="text-blue-600" />
+                <span className="font-bold text-xl text-blue-600">
+                  Tool execution
+                </span>
               </div>
+              <div className="h-px w-full ml-1 mb-3 bg-linear-to-r from-blue-800 via-blue-500 to-transparent"></div>
+            </>
+          )}
+
+          <AnimatePresence>
+            {events.length > 0 && (
+            <div className="space-y-0">
+              {events.map((event: ToolEvent, index: number) => {
+                const resultNode = event.result ? renderResult(event) : null;
+                const stateClasses =
+                  event.status === "running"
+                    ? {
+                        item: "bg-blue-50/60 border-blue-200",
+                        dot: "bg-blue-500 border-white",
+                        icon: "bg-blue-600 text-white",
+                        badge: "border-blue-200 bg-white text-blue-700",
+                      }
+                    : event.status === "success"
+                    ? {
+                        item: "bg-white border-gray-100",
+                        dot: "bg-blue-500 border-white",
+                        icon: "bg-blue-50 text-blue-700",
+                        badge: "border-blue-200 bg-blue-50 text-blue-700",
+                      }
+                    : {
+                        item: "bg-red-50 border-red-100",
+                        dot: "bg-red-500 border-white",
+                        icon: "bg-red-50 text-red-700",
+                        badge: "border-red-200 bg-white text-red-700",
+                      };
+
+                return (
+                  <div
+                    key={event.id}
+                    className={`relative ${index !== 0 ? "mt-3" : ""}`}
+                  >
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className={`rounded-lg border p-3 transition-all duration-200 ${stateClasses.item}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${stateClasses.icon}`}
+                        >
+                          {event.status === "running" && (
+                            <Loader2 size={16} className="animate-spin" />
+                          )}
+                          {event.status === "success" && <CheckCircle2 size={16} />}
+                          {event.status === "error" && <XCircle size={16} />}
+                        </div>
+
+                        <div className="flex-1">
+                          <div className="flex mt-0.5 items-center gap-2">
+                            <p className="text-base font-semibold text-gray-800">
+                              {event.title}
+                            </p>
+                            <span
+                              className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${stateClasses.badge}`}
+                            >
+                              {event.status === "running"
+                                ? "运行中"
+                                : event.status === "success"
+                                ? "完成"
+                                : "异常"}
+                            </span>
+                          </div>
+
+                          {/* 结果展示 */}
+                          {resultNode && (
+                            <div className="mt-2 text-slate-700">
+                              {resultNode}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  </div>
+                );
+              })}
             </div>
+            )}
 
-            {/* 事件内容 */}
-            <div className="flex-1">
-              <p className="text-base font-bold text-gray-900 mb-1">
-                {event.title}
-              </p>
-
-              {/* 结果展示 */}
-              {event.result && (
-                <div className="mt-2 text-base text-gray-700">
-                  {renderResult(event)}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        ))}
-
-        {finalProfile && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="mt-4 border-t border-slate-100"
-          >
-            {renderFinalProfile(finalProfile)}
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {hasFinalProfile && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="mt-3 border-t border-blue-100 pt-3"
+              >
+                {renderFinalProfile(finalProfile)}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }

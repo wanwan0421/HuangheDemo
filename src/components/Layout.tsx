@@ -11,6 +11,8 @@ const navItems = [
   { key: '/resources', label: 'Simulation Resources', to: '/resources' },
   { key: '/monitoring', label: 'Data Resources', to: '/monitoring' },
   { key: '/decision', label: 'Intelligent Decision-making', to: '/decision' },
+  { key: '/chat', label: 'Chat', to: '/chat' },
+  { key: '/simulation', label: 'Intelligent Simulation', to: '/simulation' },
   { key: '/about', label: 'About', to: '/about' },
 
 ];
@@ -50,11 +52,11 @@ export default function Layout() {
   // Determine the current path for active link highlighting
   const currentPath = location.pathname;
   const isAuthPage = currentPath === '/login' || currentPath === '/register';
-  const showFooter = !currentPath.startsWith('/decision');
+  const showFooter = !currentPath.startsWith('/chat');
 
   const isNavItemActive = (itemKey: string) => {
-    if (itemKey === '/decision') {
-      return currentPath.startsWith('/decision');
+    if (itemKey === '/chat') {
+      return currentPath.startsWith('/chat');
     }
     return currentPath === itemKey;
   };
