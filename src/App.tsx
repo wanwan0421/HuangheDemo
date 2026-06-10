@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ProtectedRoute from './components/ProtectedRoute';
 // import Decision from './pages/Decision copy';
+import Monitoring from './pages/Monitoring';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
           <Route path='/resources' element={<Resources />} />
+          <Route path="/monitoring" element={<Monitoring />} />
           <Route
             path="/decision/:sessionId?"
             element={
