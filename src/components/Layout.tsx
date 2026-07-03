@@ -9,7 +9,7 @@ import { getUserProfile } from '../lib/userCenter';
 const navItems = [
   { key: '/', label: 'Home', to: '/' },
   { key: '/resources', label: 'Simulation Resources', to: '/resources' },
-  { key: '/monitoring', label: 'Data Resources', to: '/monitoring' },
+  { key: '/monitoring', label: 'Visualization', to: '/monitoring' },
   { key: '/decision', label: 'Intelligent Decision-making', to: '/decision' },
   { key: '/chat', label: 'Chat', to: '/chat' },
   { key: '/simulation', label: 'Intelligent Simulation', to: '/simulation' },

@@ -17,6 +17,7 @@ interface UnifiedMonitoringMapProps {
   showAirQuality?: boolean;
   showRemoteSensing?: boolean;
   showRunoff?: boolean;
+  focusJiyuan?: boolean;
   selectedYear?: number;
   selectedRunoffYear?: number;
   selectedRunoffMonth?: number;
@@ -36,6 +37,9 @@ const LANDCOVER_SOURCE_ID = 'unified-landcover-raster-source';
 const LANDCOVER_LAYER_ID = 'unified-landcover-raster-layer';
 const RUNOFF_SOURCE_ID = 'unified-runoff-raster-source';
 const RUNOFF_LAYER_ID = 'unified-runoff-raster-layer';
+const JIYUAN_SOURCE_ID = 'jiyuan-boundary-source';
+const JIYUAN_FILL_LAYER_ID = 'jiyuan-boundary-fill';
+const JIYUAN_OUTLINE_LAYER_ID = 'jiyuan-boundary-outline';
 
 function getLandcoverTileUrl(year: number) {
   const base = REMOTE_SENSING_BASE_URL.endsWith('/')
@@ -123,6 +127,7 @@ export default function UnifiedMonitoringMap({
   showAirQuality = true,
   showRemoteSensing = false,
   showRunoff = false,
+  focusJiyuan = false,
   selectedYear = 2020,
   selectedRunoffYear = 1980,
   selectedRunoffMonth = 1,
@@ -134,6 +139,9 @@ export default function UnifiedMonitoringMap({
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const onStationSelectRef = useRef(onStationSelect);
   const selectedStationCodeRef = useRef(selectedStationCode ?? '');
+  const basinBoundsRef = useRef<[[number, number], [number, number]] | null>(null);
+  const jiyuanBoundsRef = useRef<[[number, number], [number, number]] | null>(null);
+  const jiyuanLoadedRef = useRef(false);
 
   useEffect(() => {
     onStationSelectRef.current = onStationSelect;
@@ -250,6 +258,7 @@ export default function UnifiedMonitoringMap({
         const bounds = getGeoJsonBounds(basinGeoJson);
 
         if (bounds) {
+          basinBoundsRef.current = bounds;
           map.fitBounds(bounds, {
             padding: 60,
             duration: 1200,
@@ -505,6 +514,103 @@ export default function UnifiedMonitoringMap({
       map.getLayer(BASIN_OUTLINE_LAYER_ID) ? BASIN_OUTLINE_LAYER_ID : undefined,
     );
   }, [selectedRunoffYear, selectedRunoffMonth, showRunoff]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!map || !map.isStyleLoaded()) {
+      return;
+    }
+
+    const fitToBounds = (
+      bounds: [[number, number], [number, number]] | null,
+      padding: number,
+    ) => {
+      if (!bounds) {
+        return;
+      }
+
+      map.fitBounds(bounds, {
+        padding,
+        duration: 1000,
+      });
+    };
+
+    const showJiyuanLayers = () => {
+      setLayerVisibility(map, JIYUAN_FILL_LAYER_ID, true);
+      setLayerVisibility(map, JIYUAN_OUTLINE_LAYER_ID, true);
+      fitToBounds(jiyuanBoundsRef.current, 80);
+    };
+
+    if (!focusJiyuan) {
+      setLayerVisibility(map, JIYUAN_FILL_LAYER_ID, false);
+      setLayerVisibility(map, JIYUAN_OUTLINE_LAYER_ID, false);
+      fitToBounds(basinBoundsRef.current, 60);
+      return;
+    }
+
+    if (jiyuanLoadedRef.current) {
+      showJiyuanLayers();
+      return;
+    }
+
+    const loadJiyuanBoundary = async () => {
+      try {
+        const response = await fetch('/geojson/jiyuan_boundary.geojson');
+
+        if (!response.ok) {
+          throw new Error('Failed to load Jiyuan boundary GeoJSON');
+        }
+
+        const jiyuanGeoJson = await response.json();
+
+        if (!map.getSource(JIYUAN_SOURCE_ID)) {
+          map.addSource(JIYUAN_SOURCE_ID, {
+            type: 'geojson',
+            data: jiyuanGeoJson,
+          });
+        }
+
+        if (!map.getLayer(JIYUAN_FILL_LAYER_ID)) {
+          map.addLayer({
+            id: JIYUAN_FILL_LAYER_ID,
+            type: 'fill',
+            source: JIYUAN_SOURCE_ID,
+            paint: {
+              'fill-color': '#1488bd',
+              'fill-opacity': 0.24,
+            },
+            layout: {
+              visibility: 'none',
+            },
+          });
+        }
+
+        if (!map.getLayer(JIYUAN_OUTLINE_LAYER_ID)) {
+          map.addLayer({
+            id: JIYUAN_OUTLINE_LAYER_ID,
+            type: 'line',
+            source: JIYUAN_SOURCE_ID,
+            paint: {
+              'line-color': '#0ee2f6',
+              'line-width': 3,
+            },
+            layout: {
+              visibility: 'none',
+            },
+          });
+        }
+
+        jiyuanBoundsRef.current = getGeoJsonBounds(jiyuanGeoJson);
+        jiyuanLoadedRef.current = true;
+        showJiyuanLayers();
+      } catch (error) {
+        console.error('Failed to initialize Jiyuan boundary layers:', error);
+      }
+    };
+
+    void loadJiyuanBoundary();
+  }, [focusJiyuan]);
 
   return (
     <div

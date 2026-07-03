@@ -155,6 +155,7 @@ export default function Monitoring() {
   const [showAirQuality, setShowAirQuality] = useState(true);
   const [showRemoteSensing, setShowRemoteSensing] = useState(true);
   const [showRunoff, setShowRunoff] = useState(false);
+  const [focusJiyuan, setFocusJiyuan] = useState(false);
 
   const [selectedStationCode, setSelectedStationCode] =
     useState<string>(DEFAULT_STATION_CODE);
@@ -625,7 +626,7 @@ export default function Monitoring() {
             </div>
 
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="rounded-2xl border border-slate-200 bg-slate-100/70 px-3 py-2 shadow-inner">
+              <div className="rounded-2xl border border-slate-200 bg-slate-100/70 px-3 py-2 shadow-inner lg:order-2">
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   图层显示
                 </div>
@@ -672,7 +673,7 @@ export default function Monitoring() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white/85 px-3 py-2 shadow-sm">
+              <div className="rounded-2xl border border-slate-200 bg-white/85 px-3 py-2 shadow-sm lg:order-3">
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   分析面板
                 </div>
@@ -717,6 +718,36 @@ export default function Monitoring() {
                   </button>
                 </div>
               </div>
+              <div className="rounded-2xl border border-slate-200 bg-white/85 px-3 py-2 shadow-sm lg:order-1">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  聚焦区域
+                </div>
+                <div className="inline-flex w-fit rounded-2xl bg-slate-100/80 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setFocusJiyuan(true)}
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                      focusJiyuan
+                        ? 'bg-emerald-700 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    济源示范区
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFocusJiyuan(false)}
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                      !focusJiyuan
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    返回全流域
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -727,6 +758,7 @@ export default function Monitoring() {
               showAirQuality={showAirQuality}
               showRemoteSensing={showRemoteSensing}
               showRunoff={showRunoff}
+              focusJiyuan={focusJiyuan}
               selectedYear={selectedYear}
               selectedRunoffYear={selectedRunoffYear}
               selectedRunoffMonth={selectedRunoffMonth}
@@ -1059,6 +1091,10 @@ export default function Monitoring() {
                     </div>
                   </>
                 )}
+
+                <div className="mt-5">
+                  {renderJiyuanOverviewCard(focusJiyuan)}
+                </div>
               </div>
             </aside>
           </div>
@@ -1404,6 +1440,51 @@ function renderRunoffAnalysisPanel({
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function renderJiyuanOverviewCard(isFocused: boolean) {
+  return (
+    <div className="rounded-2xl border border-emerald-100 bg-white/90 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-600">
+            Region
+          </div>
+          <h4 className="mt-2 text-lg font-bold text-slate-900">
+            济源示范区概览
+          </h4>
+        </div>
+        <span
+          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+            isFocused
+              ? 'bg-emerald-100 text-emerald-700'
+              : 'bg-slate-100 text-slate-600'
+          }`}
+        >
+          {isFocused ? '已聚焦' : '未聚焦'}
+        </span>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <InfoRow label="区域名称" value="济源示范区" />
+        <InfoRow label="行政区划代码" value="419001" />
+      </div>
+
+      <div className="mt-4">
+        <div className="text-sm font-semibold text-slate-900">当前支持数据</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {['空气质量', '土地覆盖', '径流量'].map((item) => (
+            <span
+              key={item}
+              className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
