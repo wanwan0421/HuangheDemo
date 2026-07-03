@@ -9,9 +9,12 @@ import { getUserProfile } from '../lib/userCenter';
 const navItems = [
   { key: '/', label: 'Home', to: '/' },
   { key: '/resources', label: 'Simulation Resources', to: '/resources' },
+  { key: '/monitoring', label: 'Visualization', to: '/monitoring' },
+  { key: '/decision', label: 'Intelligent Decision-making', to: '/decision' },
   { key: '/chat', label: 'Chat', to: '/chat' },
   { key: '/simulation', label: 'Intelligent Simulation', to: '/simulation' },
   { key: '/about', label: 'About', to: '/about' },
+
 ];
 
 export default function Layout() {
@@ -254,14 +257,14 @@ export default function Layout() {
       {/* Content area */}
       <main className={`${isAuthPage ? 'flex-1 min-h-0 overflow-hidden' : 'flex-1'}`}>
         {/* Router area */}
-          <Outlet context={{ darkMode }}/>
+        <Outlet context={{ darkMode }} />
       </main>
 
       {/* Footer area */}
       {showFooter && (
         <footer className={`shrink-0 text-center py-4 text-sm ${footerBg}`}>
-        &copy; {new Date().getFullYear()} Created by OpenGMS
-      </footer>
+          &copy; {new Date().getFullYear()} Created by OpenGMS
+        </footer>
       )}
     </div>
   );
