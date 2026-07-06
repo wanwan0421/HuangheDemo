@@ -9,9 +9,9 @@ import { useOutletContext } from 'react-router-dom';
 import AnimatedContent from '../components/AnimatedContent';
 
 const carouselImages = [huanghe1, huanghe2, huanghe3];
-const logos =[
-    {src: "src/assets/NSCCZZ.png", url: "http://nscc.zzu.edu.cn/"},
-    {src: "src/assets/NNU.png", url: "https://www.njnu.edu.cn/"},
+const logos = [
+    { src: "src/assets/NSCCZZ.png", url: "http://nscc.zzu.edu.cn/" },
+    { src: "src/assets/NNU.png", url: "https://www.njnu.edu.cn/" },
 ];
 
 interface TailwindCarouselProps {
@@ -22,12 +22,12 @@ interface OutletContextType {
 }
 
 const resourceStats = [
-    { id: 1, name: 'Simulation Resources', value: '4500+ sets of models; 20000+ sets of data', role: 'Realize efficient sharing and reuse of multi-source heterogeneous resources.' },
-    { id: 2, name: 'Index System', value: '25 primary indicators; 100 secondary indicators', role: 'Realize accurate identification and adaptation of models and data resources.'},
-    { id: 3, name: 'Intelligent Decision-making', value: 'multi-angent; data mapping; task scheduling', role: 'Realize intelligent scheme of geographic problems and scheduling of tasks.' },
-]
+    { id: 1, name: '模拟资源', value: '4500+ 套模型；20000+ 套数据', role: '实现多源异构资源的高效共享与复用。' },
+    { id: 2, name: '多源监测可视化', value: '融合多源地理环境数据，支持多图层联动展示、空间查询与区域综合分析。' },
+    { id: 3, name: '智能决策', value: '多智能体；数据映射；任务调度', role: '实现地理问题的智能方案生成与任务调度。' },
+];
 
-{/* Home Carousel Images Container Component*/}
+{/* Home Carousel Images Container Component*/ }
 const TailwindCarousel: React.FC<TailwindCarouselProps> = ({ images }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -49,14 +49,14 @@ const TailwindCarousel: React.FC<TailwindCarouselProps> = ({ images }) => {
         <div className="relative w-full flex flex-1 overflow-hidden">
 
             <div className="absolute top-2/5 left-1/2 -translate-x-1/2 -translate-y-1/2 px-6 max-w-8xl w-full mx-auto text-center z-20">
-                <h1 className={'mt-4 font-sans font-extrabold tracking-tight text-center text-[45px] text-white text-shadow-lg'}>
-                    GeoAgent: Intelligent Multi-Agent Execution Framework
+                <h1 className={'mt-4 font-sans font-extrabold tracking-tight text-center text-[64px] text-white text-shadow-lg'}>
+                    GeoAgent：智能多智能体执行框架
                 </h1>
-                <p className={'mt-4 text-white text-shadow-lg leading-relaxed text-lg font-bold'}>
-                    An autonomous simulation platform driven by Multi-Agent collaboration, bridging the gap between heterogeneous resources through intelligent data-model adaptation.
+                <p className={'mt-4 text-white text-shadow-lg leading-relaxed text-xl font-bold'}>
+                    一个由多智能体协同驱动的自主模拟平台，通过智能化数据与模型适配打通异构资源之间的连接。
                 </p>
-                <p className={'text-white text-shadow-lg leading-relaxed text-lg font-bold'}>
-                    Empowering geographical research with natural language driven task planning, automated resource orchestration, and closed-loop self-healing.
+                <p className={'text-white text-shadow-lg leading-relaxed text-xl font-bold'}>
+                    以自然语言驱动任务规划、自动化资源编排和全过程管理，赋能地理研究全流程。
                 </p>
             </div>
 
@@ -102,11 +102,11 @@ export default function Home() {
 
             <div className="mt-10 text-center max-w-7xl mx-auto px-4">
                 <h1 className={`font-light tracking-tight text-center text-[40px] ${textColor}`}>
-                    From Resources to Decision-making to Scheme — Intelligently
+                    从资源到决策再到方案，全面智能贯通
                 </h1>
                 <div className="h-px w-[180px] mx-auto my-4 bg-linear-to-r from-transparent via-white to-transparent"></div>
                 <p className={`font-light mt-4 ${textColor} leading-relaxed text-lg`}>
-                    Reuse of multi-source heterogeneous resources. Perception analysis of geographical simulation problems. Intelligent invoke of simulation schemes.
+                    面向多源异构资源复用、地理模拟问题感知分析与模拟方案智能调用，构建一体化研究支撑能力。
                 </p>
             </div>
 
@@ -164,11 +164,11 @@ export default function Home() {
                         </svg>
                         <div className="mx-auto max-w-md text-center lg:mx-0 lg:flex-auto lg:py-30 lg:text-left">
                             <h2 className="text-3xl font-bold text-sans text-balance text-white sm:text-4xl">
-                                Aggregation of multi-source resources
+                                多源资源汇聚
                             </h2>
                             <p className="mt-6 text-lg/8 text-sans text-gray-200 leading-6">
-                                Focus on the integration of diverse and heterogeneous simulation resources in the Yellow River Basin,
-                                and promote the collaborative integration of resources through service-oriented packaging, cross platform deployment and unified data model construction.
+                                聚焦黄河流域多样化、异构化模拟资源的整合，
+                                通过服务化封装、跨平台部署和统一数据模型构建，推进资源协同集成。
                             </p>
                             <div className="mt-10 flex items-center justify-center gap-x-6 lg:justify-start">
                                 <a
@@ -176,7 +176,7 @@ export default function Home() {
                                     className="rounded-md bg-white px-3.5 py-2.5 text-sm text-sans text-black font-bold shadow-xs hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                                 >
                                     {' '}
-                                    Get started{' '}
+                                    立即进入{' '}
                                 </a>
                             </div>
                         </div>
@@ -228,18 +228,17 @@ export default function Home() {
                         </svg>
                         <div className="mx-auto max-w-md text-center lg:mx-0 lg:flex-auto lg:py-30 lg:text-left">
                             <h2 className="text-3xl font-bold text-sans text-balance text-white sm:text-4xl">
-                                Construction of multi-scenarios index system
+                                多源数据融合展示
                             </h2>
                             <p className="mt-6 text-lg/8 text-sans text-gray-200 leading-6">
-                                Problem solving analysis for typical scenarios, through the design of simulation analysis index library and index classification system,
-                                to achieve the collection of indicators for specific geographical problem solving and evaluation.
+                                融合多源地理环境数据，支持地图联动、图层切换、空间查询与区域综合分析，为环境监测和地理建模结果展示提供直观支撑。
                             </p>
                             <div className="mt-10 flex items-center justify-center gap-x-6 lg:justify-start">
                                 <a
-                                    href="/index"
+                                    href="/monitoring"
                                     className="rounded-md bg-white px-3.5 py-2.5 text-sm text-sans text-black font-bold shadow-xs hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                                 >
-                                    Get started
+                                    立即进入
                                 </a>
                             </div>
                         </div>
@@ -291,19 +290,19 @@ export default function Home() {
                         </svg>
                         <div className="mx-auto max-w-md text-center lg:mx-0 lg:flex-auto lg:py-30 lg:text-left">
                             <h2 className="text-3xl font-bold text-sans text-balance text-white sm:text-4xl">
-                                Intelligent simulation process of multi-agent
+                                多智能体智能模拟流程
                             </h2>
                             <p className="mt-6 text-lg/8 text-sans text-gray-200 leading-6">
-                                Based on the standardized resources and multi-agent coupling technology, the collaborative decision-making of multiple models is realized,
-                                and the automatic process construction and intelligent solution of geographical simulation problems are realized.
+                                基于标准化资源与多智能体耦合技术，实现多模型协同决策，
+                                支撑地理模拟问题的自动化流程构建与智能求解。
                             </p>
                             <div className="mt-10 flex items-center justify-center gap-x-6 lg:justify-start">
                                 <a
-                                    href="/decision"
+                                    href="/simulation"
                                     className="rounded-md bg-white px-3.5 py-2.5 text-sm text-sans text-black font-bold shadow-xs hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                                 >
                                     {' '}
-                                    Get started{' '}
+                                    立即进入{' '}
                                 </a>
                             </div>
                         </div>
@@ -320,7 +319,7 @@ export default function Home() {
 
             <div className="text-center max-w-7xl mx-auto px-4 py-16 sm:py-20">
                 <h1 className={`font-light tracking-tight text-center text-[40px] ${textColor}`}>
-                    Cooperation Partners
+                    合作伙伴
                 </h1>
                 <div className="h-px w-[180px] mx-auto my-4 bg-linear-to-r from-transparent via-white to-transparent"></div>
                 <div className="flex flex-wrap justify-center gap-8 mt-10">

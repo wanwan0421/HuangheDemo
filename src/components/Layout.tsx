@@ -7,13 +7,13 @@ import { getUserProfile } from '../lib/userCenter';
 
 // Navigation items structure remains the same
 const navItems = [
-  { key: '/', label: 'Home', to: '/' },
-  { key: '/resources', label: 'Simulation Resources', to: '/resources' },
-  { key: '/monitoring', label: 'Visualization', to: '/monitoring' },
-  { key: '/decision', label: 'Intelligent Decision-making', to: '/decision' },
-  { key: '/chat', label: 'Chat', to: '/chat' },
-  { key: '/simulation', label: 'Intelligent Simulation', to: '/simulation' },
-  { key: '/about', label: 'About', to: '/about' },
+  { key: '/', label: '首页', to: '/' },
+  { key: '/resources', label: '模拟资源', to: '/resources' },
+  { key: '/monitoring', label: '可视化', to: '/monitoring' },
+  // { key: '/decision', label: '智能决策', to: '/decision' },
+  // { key: '/chat', label: '聊天', to: '/chat' },
+  { key: '/simulation', label: '智能决策', to: '/simulation' },
+  { key: '/about', label: '关于', to: '/about' },
 
 ];
 
@@ -108,12 +108,12 @@ export default function Layout() {
 
           {/* Desktop Menu */}
           <div className="hidden lg:flex lg:flex-1 lg:items-center">
-            <div className="flex flex-1 items-center justify-center gap-x-8">
+            <div className="flex flex-1 items-center justify-center gap-x-16">
               {navItems.map((item) => (
                 <Link
                   key={item.key}
                   to={item.to}
-                  className={`text-sm font-medium whitespace-nowrap ${isNavItemActive(item.key)
+                  className={`text-base font-medium whitespace-nowrap ${isNavItemActive(item.key)
                     ? 'text-blue-500! border-b-2 border-blue-500 pb-1 font-semibold'
                     : darkMode
                       ? 'text-gray-300 hover:text-white'
@@ -145,24 +145,38 @@ export default function Layout() {
 
               {authUser ? (
                 <>
-                  <Link to="/profile" className="inline-flex" title="User Center">
+                  <Link to="/profile" className="inline-flex" title="个人中心">
                     <img src={avatar} alt="avatar" className="w-8 h-8 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition object-cover" />
                   </Link>
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="rounded-md border border-gray-600 px-3 py-1 text-xs text-gray-200 hover:bg-gray-700"
+                    className={`rounded-md border px-3 py-1 text-xs hover:bg-gray-700 ${
+                      darkMode
+                        ? 'border-gray-600 text-gray-200'
+                        : 'border-gray-300 text-gray-800 hover:text-white'
+                    }`}
                   >
-                    Exit
+                    退出登录
                   </button>
                 </>
               ) : (
                 <div className="flex items-center gap-2">
-                  <Link to="/login" className="rounded-md border border-blue-400/40 px-3 py-1 text-sm font-medium text-white hover:bg-blue-400/40">
-                    Login
+                  <Link
+                    to="/login"
+                    className={`rounded-md border border-blue-400/40 px-3 py-1 text-sm font-medium hover:bg-blue-400/40 ${
+                      darkMode ? 'text-white' : 'text-gray-900'
+                    }`}
+                  >
+                    登录
                   </Link>
-                  <Link to="/register" className="rounded-md border border-cyan-400/40 px-3 py-1 text-sm font-medium text-white hover:bg-cyan-400/40">
-                    Register
+                  <Link
+                    to="/register"
+                    className={`rounded-md border border-cyan-400/40 px-3 py-1 text-sm font-medium hover:bg-cyan-400/40 ${
+                      darkMode ? 'text-white' : 'text-gray-900'
+                    }`}
+                  >
+                    注册
                   </Link>
                 </div>
               )}
@@ -217,7 +231,7 @@ export default function Layout() {
               </button>
               {authUser ? (
                 <div className="flex items-center gap-3">
-                  <Link to="/profile" onClick={() => setMobileOpen(false)} className="inline-flex" title="User Center">
+                  <Link to="/profile" onClick={() => setMobileOpen(false)} className="inline-flex" title="个人中心">
                     <img src={avatar} alt="avatar" className="w-10 h-10 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition object-cover" />
                   </Link>
                   <button
@@ -226,9 +240,13 @@ export default function Layout() {
                       void handleLogout();
                       setMobileOpen(false);
                     }}
-                    className="rounded-md border border-gray-600 px-3 py-1 text-xs text-gray-300 hover:bg-gray-700"
+                    className={`rounded-md border px-3 py-1 text-xs hover:bg-gray-700 ${
+                      darkMode
+                        ? 'border-gray-600 text-gray-300'
+                        : 'border-gray-300 text-gray-800 hover:text-white'
+                    }`}
                   >
-                    Exit
+                    退出登录
                   </button>
                 </div>
               ) : (
@@ -236,16 +254,20 @@ export default function Layout() {
                   <Link
                     to="/login"
                     onClick={() => setMobileOpen(false)}
-                    className="rounded-md border border-blue-400/40 px-3 py-1 text-sm font-medium text-white hover:bg-blue-400/40"
+                    className={`rounded-md border border-blue-400/40 px-3 py-1 text-sm font-medium hover:bg-blue-400/40 ${
+                      darkMode ? 'text-white' : 'text-gray-900'
+                    }`}
                   >
-                    Login
+                    登录
                   </Link>
                   <Link
                     to="/register"
                     onClick={() => setMobileOpen(false)}
-                    className="rounded-md border border-cyan-400/40 px-3 py-1 text-sm font-medium text-white hover:bg-cyan-400/40"
+                    className={`rounded-md border border-cyan-400/40 px-3 py-1 text-sm font-medium hover:bg-cyan-400/40 ${
+                      darkMode ? 'text-white' : 'text-gray-900'
+                    }`}
                   >
-                    Register
+                    注册
                   </Link>
                 </div>
               )}
@@ -263,7 +285,7 @@ export default function Layout() {
       {/* Footer area */}
       {showFooter && (
         <footer className={`shrink-0 text-center py-4 text-sm ${footerBg}`}>
-          &copy; {new Date().getFullYear()} Created by OpenGMS
+          &copy; {new Date().getFullYear()} Produced by OpenGMS
         </footer>
       )}
     </div>
