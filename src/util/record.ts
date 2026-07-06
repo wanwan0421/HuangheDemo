@@ -242,7 +242,7 @@ export default records;
 // 定义页节点结构
 export interface MenuLeafItem {
     id: string; // 存储用于查询的normalTags
-    title: string; // 存储用于显示的nameEn
+    title: string; // 存储用于显示的nameCn
 }
 
 // 定义MenuData结构
@@ -257,7 +257,7 @@ export function buildMenuData(records: TagRecords): MenuDataItem[] {
     const modelResouceChildren = records.map(secondLevelChild => {
         // 第二级目录
         const secondLevelChildren: MenuDataItem = {
-            title: secondLevelChild.nameEn,
+            title: secondLevelChild.nameCn,
             id: [],
             children: []
         };
@@ -266,7 +266,7 @@ export function buildMenuData(records: TagRecords): MenuDataItem[] {
             // 第三级目录
             secondLevelChild.children.forEach(thirdLevelChild => {
                 const thirdLevelChildren: MenuDataItem = {
-                    title: thirdLevelChild.nameEn,
+                    title: thirdLevelChild.nameCn,
                     id: JSON.parse(thirdLevelChild.childrenId),
                     children: []
                 };
@@ -275,7 +275,7 @@ export function buildMenuData(records: TagRecords): MenuDataItem[] {
                     // 第四级目录
                     thirdLevelChildren.children = thirdLevelChild.children.map(fourthLevelChild => ({
                         id: fourthLevelChild._id,
-                        title: fourthLevelChild.nameEn
+                        title: fourthLevelChild.nameCn
                     })) 
                 };
 
@@ -289,7 +289,7 @@ export function buildMenuData(records: TagRecords): MenuDataItem[] {
 
     return [
         {
-            title: "Model Resources",
+            title: "模型资源",
             id: ["a24cba2b-9ce1-44de-ac68-8ec36a535d0e",
                  "75aee2b7-b39a-4cd0-9223-3b7ce755e457",
                  "1bf4f381-6bd8-4716-91ab-5a56e51bd2f9",
@@ -313,12 +313,12 @@ export function buildMenuData(records: TagRecords): MenuDataItem[] {
             children: modelResouceChildren
         },
         {
-            title: "Method Resources",
+            title: "方法资源",
             id: [],
             children: []
         },
         {
-            title: "Data Resources",
+            title: "数据资源",
             id: [],
             children: []
         }

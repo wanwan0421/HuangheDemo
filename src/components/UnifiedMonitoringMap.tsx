@@ -268,10 +268,17 @@ export default function UnifiedMonitoringMap({
         console.error('Failed to initialize base monitoring map:', error);
       }
 
+      const getHuangheMonitoringUrl = (path: string) => {
+        const baseUrl = import.meta.env.VITE_HUANGHE_MONITORING_URL;
+        return `${baseUrl}${path}`;
+      };
+
       try {
         const stationResponse = await fetch(
-          getAirQualityUrl('/huanghe-monitoring/stations'),
+          getHuangheMonitoringUrl('/stations'),
         );
+
+
 
         if (!stationResponse.ok) {
           throw new Error('Failed to load air quality stations');
