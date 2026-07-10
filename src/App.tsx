@@ -18,8 +18,8 @@ function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
-          <Route path='/resources' element={<Resources />} />
-          <Route path="/monitoring" element={<Monitoring />} />
+          <Route path='/resources' element={<ProtectedRoute><Resources /></ProtectedRoute>} />
+          <Route path="/monitoring" element={<ProtectedRoute><Monitoring /></ProtectedRoute>} />
           <Route
             path="/chat/:sessionId?"
             element={

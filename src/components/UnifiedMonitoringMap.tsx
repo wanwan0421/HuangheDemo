@@ -25,7 +25,7 @@ interface UnifiedMonitoringMapProps {
   selectedStationCode?: string;
 }
 
-const AIR_QUALITY_BASE_URL = import.meta.env.VITE_BACK_URL?.trim() || '/api';
+
 
 const BASIN_SOURCE_ID = 'yellow-river-basin-source';
 const BASIN_FILL_LAYER_ID = 'yellow-river-basin-fill';
@@ -57,13 +57,7 @@ function getRunoffTileUrl(year: number, month: number) {
   return `${base}/hydrology/runoff/${year}/${month}/tiles/{z}/{x}/{y}.png`;
 }
 
-function getAirQualityUrl(path: string) {
-  const base = AIR_QUALITY_BASE_URL.endsWith('/')
-    ? AIR_QUALITY_BASE_URL.slice(0, -1)
-    : AIR_QUALITY_BASE_URL;
 
-  return `${base}/${path.replace(/^\/+/, '')}`;
-}
 
 function getGeoJsonBounds(
   geojson: { features?: Array<{ geometry?: GeoJSON.Geometry | null }> },
