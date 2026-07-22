@@ -51,6 +51,13 @@ export const saveWorkbenchStorage = (storage: WorkbenchStorage) => {
   }
 };
 
+export const removeWorkbenchSnapshot = (storageKey: string) => {
+  const storage = loadWorkbenchStorage();
+  if (!(storageKey in storage)) return;
+  delete storage[storageKey];
+  saveWorkbenchStorage(storage);
+};
+
 export const persistWorkbenchSnapshot = (
   storageKey: string,
   plan: SimulationPlan,

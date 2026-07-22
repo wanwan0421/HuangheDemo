@@ -11,18 +11,20 @@ import {
   Loader2,
   MapPinned,
   MessageSquareText,
-  PanelBottomClose,
-  PanelBottomOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
   RefreshCw,
   Send,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   Upload,
   Wand2,
   X,
 } from "lucide-react";
 import MapboxViewer from "../components/mapbox";
+import { authenticatedFetch } from "../lib/auth";
 import type {
   Message,
   SimulationPlan,
@@ -48,6 +50,7 @@ import {
   getWorkbenchHistoryItems,
   getWorkbenchStorageKey,
   loadWorkbenchStorage,
+  removeWorkbenchSnapshot,
   type WorkbenchHistoryItem,
 } from "../util/workbenchStorage";
 import { getPayloadToolKind } from "../util/messageUtils";
@@ -65,6 +68,13 @@ import {
 const BACK_URL = import.meta.env.VITE_BACK_URL;
 
 type HistoryItem = WorkbenchHistoryItem;
+type ModelCandidateOption = {
+  md5: string;
+  name: string;
+  description: string;
+  inputs: string[];
+  outputs: string[];
+};
 
 const flowMeta: Array<{
   id: WorkbenchSectionId;
@@ -72,11 +82,11 @@ const flowMeta: Array<{
   shortLabel: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
 }> = [
-  { id: "goal", label: "需求目标", shortLabel: "目标", icon: FileText },
-  { id: "model", label: "模型选择", shortLabel: "模型", icon: Sparkles },
-  { id: "data", label: "数据与参数", shortLabel: "数据", icon: Database },
-  { id: "results", label: "运行结果", shortLabel: "结果", icon: MapPinned },
-];
+    { id: "goal", label: "需求目标", shortLabel: "目标", icon: FileText },
+    { id: "model", label: "模型选择", shortLabel: "模型", icon: Sparkles },
+    { id: "data", label: "数据与参数", shortLabel: "数据", icon: Database },
+    { id: "results", label: "运行结果", shortLabel: "结果", icon: MapPinned },
+  ];
 
 const statusLabels: Record<SimulationPlanStatus, string> = {
   drafting: "起草中",
@@ -150,12 +160,7 @@ const fallbackMapLayers: GeoJsonLayer[] = [
   },
 ];
 
-const authFetch = (input: RequestInfo | URL, init?: RequestInit) => {
-  return fetch(input, {
-    ...init,
-    credentials: init?.credentials ?? "include",
-  });
-};
+const authFetch = authenticatedFetch;
 
 export default function DecisionWorkbench() {
   const [workbenchState, dispatch] = React.useReducer(
@@ -183,6 +188,7 @@ export default function DecisionWorkbench() {
   const [chatInput, setChatInput] = React.useState("");
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [historyItems, setHistoryItems] = React.useState<HistoryItem[]>([]);
+  const [candidateOptions, setCandidateOptions] = React.useState<ModelCandidateOption[]>([]);
   const [mapLayers, setMapLayers] = React.useState<GeoJsonLayer[]>(fallbackMapLayers);
   const messageScrollRef = React.useRef<HTMLDivElement | null>(null);
   const statusCheckIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
@@ -266,9 +272,11 @@ export default function DecisionWorkbench() {
     return nextSessionId;
   };
 
-  const handleSendMessage = async (rawPrompt: string) => {
+  const handleSendMessage = async (rawPrompt: string, agentQuery = rawPrompt) => {
     const prompt = rawPrompt.trim();
-    if (!prompt || isAgentRunning) return;
+    const query = agentQuery.trim();
+    if (!prompt || !query || isAgentRunning) return;
+    setCandidateOptions([]);
 
     dispatch({ type: "agent_start", statusText: "Agent 正在整理方案..." });
     updatePlan((current) => ({
@@ -304,7 +312,7 @@ export default function DecisionWorkbench() {
     });
 
     const es = new EventSource(
-      `${BACK_URL}/chat/sessions/${currentSessionId}/chat?query=${encodeURIComponent(prompt)}`,
+      `${BACK_URL}/chat/sessions/${currentSessionId}/chat?query=${encodeURIComponent(query)}`,
       { withCredentials: true },
     );
 
@@ -335,14 +343,43 @@ export default function DecisionWorkbench() {
         }
         if (payload.type === "tool_result" && getPayloadToolKind(payload) === "search_most_model") {
           updatePlan((current) => mergeRecommendedModelIntoPlan(current, payload.data));
+          const modelName = payload.data?.name || "该模型";
+          const modelDescription = String(payload.data?.description || "").trim();
+          const fallbackReason = modelDescription.length >= 12
+            ? `推荐 ${modelName}。${modelDescription}`
+            : `目前关于 ${modelName} 的功能、输入输出和适用场景说明较为有限，暂时无法准确说明它适合当前任务的具体原因。`;
+
+          if (payload.data?.md5) {
+            void authenticatedFetch(`${BACK_URL}/llm-agent/explainRecommendation`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ md5: payload.data.md5, task: prompt }),
+            })
+              .then(async (response) => {
+                if (!response.ok) throw new Error(`Explain recommendation failed: ${response.status}`);
+                const result = await response.json();
+                const explanation = String(result.data?.explanation || "").trim();
+                appendAiToken(`模型推荐说明：${explanation || fallbackReason}\n\n`);
+              })
+              .catch((error) => {
+                console.error("Explain recommendation failed", error);
+                appendAiToken(`模型推荐说明：${fallbackReason}\n\n`);
+              });
+          } else {
+            appendAiToken(`模型推荐说明：${fallbackReason}\n\n`);
+          }
+        }
+        if (payload.type === "candidate_selection_required") {
+          setCandidateOptions(Array.isArray(payload.data) ? payload.data : []);
+          dispatch({ type: "agent_status", statusText: "请选择一个模型" });
         }
 
         if (payload.type === "final") {
           es.close();
           dispatch({ type: "agent_done", statusText: "Agent 已完成" });
           updatePlan((current) => ({
-              ...current,
-              status: current.model.recommendedName ? "ready" : current.status,
+            ...current,
+            status: current.model.recommendedName ? "ready" : current.status,
           }));
         }
       } catch (error) {
@@ -394,6 +431,35 @@ export default function DecisionWorkbench() {
     }
   };
 
+  const deleteHistoryItem = async (item: HistoryItem) => {
+    const confirmed = window.confirm(`确定要删除方案“${item.plan.title || "未命名方案"}”吗？删除后无法恢复。`);
+    if (!confirmed) return;
+
+    try {
+      if (!item.key.startsWith("local:")) {
+        const response = await authFetch(`${BACK_URL}/chat/sessions/${item.key}`, {
+          method: "DELETE",
+        });
+        if (!response.ok) {
+          throw new Error(`Delete session failed with status ${response.status}`);
+        }
+        const result = await response.json();
+        if (!result.success) throw new Error("Delete session failed");
+      }
+
+      removeWorkbenchSnapshot(item.key);
+      setHistoryItems((current) => current.filter((historyItem) => historyItem.key !== item.key));
+
+      if (item.key === storageKey) {
+        dispatch({ type: "new_plan" });
+        navigateToRoot();
+      }
+    } catch (error) {
+      console.error("Delete workbench history failed", error);
+      window.alert("删除方案失败，请稍后重试。");
+    }
+  };
+
   const handleAskAgentForSection = (sectionId: WorkbenchSectionId) => {
     const section = flowMeta.find((item) => item.id === sectionId);
     const prompt = [
@@ -414,9 +480,9 @@ export default function DecisionWorkbench() {
     }
 
     updatePlan((current) => ({
-        ...current,
-        status: "running",
-        result: { taskId: null, status: "running", raw: null, error: null, outputs: [] },
+      ...current,
+      status: "running",
+      result: { taskId: null, status: "running", raw: null, error: null, outputs: [] },
     }));
 
     const formData = new FormData();
@@ -459,9 +525,9 @@ export default function DecisionWorkbench() {
 
       dispatch({ type: "set_active_section", section: "results" });
       updatePlan((current) => ({
-          ...current,
-          status: "running",
-          result: { ...current.result, taskId, status: "running" },
+        ...current,
+        status: "running",
+        result: { ...current.result, taskId, status: "running" },
       }));
 
       void pollTaskStatus(taskId);
@@ -470,13 +536,13 @@ export default function DecisionWorkbench() {
       }, 2000);
     } catch (error) {
       updatePlan((current) => ({
-          ...current,
+        ...current,
+        status: "failed",
+        result: {
+          ...current.result,
           status: "failed",
-          result: {
-            ...current.result,
-            status: "failed",
-            error: error instanceof Error ? error.message : "Task publish failed",
-          },
+          error: error instanceof Error ? error.message : "Task publish failed",
+        },
       }));
     }
   };
@@ -503,15 +569,15 @@ export default function DecisionWorkbench() {
 
         const rawResult = resultData.data ?? null;
         updatePlan((current) => ({
-            ...current,
-            status: "done",
-            result: {
-              taskId,
-              status: "completed",
-              raw: rawResult,
-              error: null,
-              outputs: collectResultOutputs(rawResult),
-            },
+          ...current,
+          status: "done",
+          result: {
+            taskId,
+            status: "completed",
+            raw: rawResult,
+            error: null,
+            outputs: collectResultOutputs(rawResult),
+          },
         }));
       } else if (currentStatus === "Failed" || currentStatus === "Error") {
         if (statusCheckIntervalRef.current) {
@@ -519,20 +585,20 @@ export default function DecisionWorkbench() {
           statusCheckIntervalRef.current = null;
         }
         updatePlan((current) => ({
-            ...current,
+          ...current,
+          status: "failed",
+          result: {
+            ...current.result,
+            taskId,
             status: "failed",
-            result: {
-              ...current.result,
-              taskId,
-              status: "failed",
-              error: statusPayload?.error || "Task execution failed",
-            },
+            error: statusPayload?.error || "Task execution failed",
+          },
         }));
       } else {
         updatePlan((current) => ({
-            ...current,
-            status: "running",
-            result: { ...current.result, taskId, status: "running" },
+          ...current,
+          status: "running",
+          result: { ...current.result, taskId, status: "running" },
         }));
       }
     } catch (error) {
@@ -541,14 +607,14 @@ export default function DecisionWorkbench() {
         statusCheckIntervalRef.current = null;
       }
       updatePlan((current) => ({
-          ...current,
+        ...current,
+        status: "failed",
+        result: {
+          ...current.result,
+          taskId,
           status: "failed",
-          result: {
-            ...current.result,
-            taskId,
-            status: "failed",
-            error: error instanceof Error ? error.message : "Failed to check task status",
-          },
+          error: error instanceof Error ? error.message : "Failed to check task status",
+        },
       }));
     }
   };
@@ -601,7 +667,7 @@ export default function DecisionWorkbench() {
         </div>
       </header>
 
-      <main className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto]">
+      <main className="grid min-h-0 flex-1 grid-rows-[auto_1fr]">
         <PlanFlow
           plan={plan}
           runtimeFiles={runtimeFiles}
@@ -610,41 +676,58 @@ export default function DecisionWorkbench() {
           onSelect={(section) => dispatch({ type: "set_active_section", section })}
         />
 
-        <section className="min-h-0 p-3 lg:p-4">
-          <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]">
-            <div className="relative min-h-[360px] overflow-hidden rounded-lg border border-blue-100 bg-white shadow-lg shadow-blue-950/8">
-              <MapboxViewer geoJsonDataArray={mapLayers} />
-              <MapOverlay 
-                layerCount={mapLayers.length}
-                isFallback={mapLayers === fallbackMapLayers}
-                outputCount={outputCount}
+        <section className="min-h-0 overflow-y-auto p-3 lg:overflow-hidden lg:p-4">
+          <div
+            className={
+              isChatOpen
+                ? "grid h-full min-h-0 gap-3 transition-[grid-template-columns] duration-200 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)]"
+                : "grid h-full min-h-0 gap-3 transition-[grid-template-columns] duration-200 lg:grid-cols-[48px_minmax(0,1fr)]"
+            }
+          >
+            <ChatDock
+              open={isChatOpen}
+              messages={messages}
+              chatInput={chatInput}
+              isAgentRunning={isAgentRunning}
+              agentStatusText={agentStatusText}
+              agentStatusAnchorId={agentStatusAnchorId}
+              candidateOptions={candidateOptions}
+              messageScrollRef={messageScrollRef}
+              onToggle={() => dispatch({ type: "set_chat_open", open: (current) => !current })}
+              onInputChange={setChatInput}
+              onSubmit={handlePromptSubmit}
+              onSelectCandidate={(candidate) => {
+                const displayPrompt = `选择模型：${candidate.name}`;
+                const task = plan.goal.objective || "当前任务";
+                void handleSendMessage(
+                  displayPrompt,
+                  `针对需求“${task}”，请使用模型“${candidate.name}”。[MODEL_MD5:${candidate.md5}]`,
+                );
+              }}
+            />
+
+            <div className="grid min-h-[520px] gap-3 lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]">
+              <div className="relative min-h-[360px] overflow-hidden rounded-lg border border-blue-100 bg-white shadow-lg shadow-blue-950/8">
+                <MapboxViewer geoJsonDataArray={mapLayers} />
+                <MapOverlay
+                  layerCount={mapLayers.length}
+                  isFallback={mapLayers === fallbackMapLayers}
+                  outputCount={outputCount}
+                />
+              </div>
+
+              <FlowInspector
+                sectionId={activeSection}
+                plan={plan}
+                runtimeFiles={runtimeFiles}
+                taskStatus={taskStatus}
+                updatePlan={updatePlan}
+                setRuntimeFiles={setRuntimeFiles}
+                onAskAgent={handleAskAgentForSection}
               />
             </div>
-
-            <FlowInspector
-              sectionId={activeSection}
-              plan={plan}
-              runtimeFiles={runtimeFiles}
-              taskStatus={taskStatus}
-              updatePlan={updatePlan}
-              setRuntimeFiles={setRuntimeFiles}
-              onAskAgent={handleAskAgentForSection}
-            />
           </div>
         </section>
-
-        <ChatDock
-          open={isChatOpen}
-          messages={messages}
-          chatInput={chatInput}
-          isAgentRunning={isAgentRunning}
-          agentStatusText={agentStatusText}
-          agentStatusAnchorId={agentStatusAnchorId}
-          messageScrollRef={messageScrollRef}
-          onToggle={() => dispatch({ type: "set_chat_open", open: (current) => !current })}
-          onInputChange={setChatInput}
-          onSubmit={handlePromptSubmit}
-        />
       </main>
 
       {historyOpen && (
@@ -653,6 +736,7 @@ export default function DecisionWorkbench() {
           currentKey={storageKey}
           onClose={() => setHistoryOpen(false)}
           onLoad={loadHistoryItem}
+          onDelete={deleteHistoryItem}
         />
       )}
     </div>
@@ -695,16 +779,14 @@ function PlanFlow({
               <button
                 type="button"
                 onClick={() => onSelect(item.id)}
-                className={`flex min-w-[190px] items-center gap-3 rounded-lg border px-3 py-3 text-left transition ${
-                  active
-                    ? "border-blue-500 bg-linear-to-br from-blue-50 to-sky-50 shadow-sm shadow-blue-950/8"
-                    : "border-blue-100 bg-white hover:border-blue-300 hover:bg-blue-50/50"
-                }`}
+                className={`flex min-w-[190px] items-center gap-3 rounded-lg border px-3 py-3 text-left transition ${active
+                  ? "border-blue-500 bg-linear-to-br from-blue-50 to-sky-50 shadow-sm shadow-blue-950/8"
+                  : "border-blue-100 bg-white hover:border-blue-300 hover:bg-blue-50/50"
+                  }`}
               >
                 <span
-                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
-                    active ? "bg-blue-600 text-white shadow-sm" : "bg-sky-50 text-blue-700"
-                  }`}
+                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${active ? "bg-blue-600 text-white shadow-sm" : "bg-sky-50 text-blue-700"
+                    }`}
                 >
                   <Icon size={17} />
                 </span>
@@ -870,9 +952,9 @@ function DataPanel({
         slot.kind === "file"
           ? current.parameters
           : {
-              ...current.parameters,
-              values: { ...current.parameters.values, [slot.name]: value },
-            },
+            ...current.parameters,
+            values: { ...current.parameters.values, [slot.name]: value },
+          },
     }));
   };
 
@@ -1081,6 +1163,7 @@ function MapOverlay({
 function ChatDock({
   open,
   messages,
+  candidateOptions,
   chatInput,
   isAgentRunning,
   agentStatusText,
@@ -1089,9 +1172,11 @@ function ChatDock({
   onToggle,
   onInputChange,
   onSubmit,
+  onSelectCandidate,
 }: {
   open: boolean;
   messages: Message[];
+  candidateOptions: ModelCandidateOption[];
   chatInput: string;
   isAgentRunning: boolean;
   agentStatusText: string;
@@ -1100,11 +1185,20 @@ function ChatDock({
   onToggle: () => void;
   onInputChange: (value: string) => void;
   onSubmit: () => void;
+  onSelectCandidate: (candidate: ModelCandidateOption) => void;
 }) {
   return (
-    <section className={`shrink-0 border-t border-blue-100 bg-white shadow-[0_-8px_24px_rgba(30,64,175,0.08)] transition-all ${open ? "h-72" : "h-12"}`}>
-      <div className="flex h-12 items-center justify-between border-b border-blue-100 bg-linear-to-r from-blue-50 to-sky-50 px-4">
-        <div className="flex items-center gap-2">
+    <section
+      className={`overflow-hidden rounded-lg border border-blue-100 bg-white shadow-lg shadow-blue-950/8 lg:h-full lg:min-h-0 ${
+        open ? "min-h-[320px]" : "min-h-12"
+      }`}
+    >
+      <div
+        className={`flex h-12 items-center border-b border-blue-100 bg-linear-to-r from-blue-50 to-sky-50 ${
+          open ? "justify-between px-4" : "justify-center"
+        }`}
+      >
+        <div className={`items-center gap-2 ${open ? "flex" : "hidden"}`}>
           <MessageSquareText size={16} className="text-blue-700" />
           <span className="text-sm font-semibold text-slate-800">智能助手</span>
           {isAgentRunning && (
@@ -1120,7 +1214,7 @@ function ChatDock({
           className="rounded-md p-1.5 text-blue-700 transition hover:bg-white hover:text-blue-900"
           aria-label={open ? "收起聊天" : "展开聊天"}
         >
-          {open ? <PanelBottomClose size={18} /> : <PanelBottomOpen size={18} />}
+          {open ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
         </button>
       </div>
 
@@ -1128,8 +1222,13 @@ function ChatDock({
         <div className="grid h-[calc(100%-48px)] grid-rows-[1fr_auto]">
           <div ref={messageScrollRef} className="overflow-y-auto px-4 py-3">
             {messages.length === 0 ? (
-              <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center gap-3 text-sm text-slate-500">
-                <p>输入一句模拟需求，Agent 会生成一条可运行流程。</p>
+              <div className="mx-auto flex h-full max-w-6xl items-center">
+                <div className="flex max-w-[80%] items-start gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm">
+                  <Bot size={16} className="mt-0.5 shrink-0 text-blue-600" />
+                  <p className="leading-6">
+                    您好！我是智能决策助手。您可以告诉我您的研究目标或模拟需求，我可以帮助您分析需求、推荐合适的模型，并协助调用和运行模型。
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="mx-auto max-w-6xl space-y-3">
@@ -1141,6 +1240,43 @@ function ChatDock({
                     statusText={agentStatusText}
                   />
                 ))}
+                {candidateOptions.length > 0 && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3">
+                    <p className="text-sm font-semibold text-slate-900">
+                      找到多个相近的模型，请选择更符合您需求的一个：
+                    </p>
+                    <div className="mt-3 grid gap-2">
+                      {candidateOptions.map((candidate) => (
+                        <div
+                          key={candidate.md5}
+                          className="flex flex-col rounded-lg border border-blue-100 bg-white p-3 shadow-sm"
+                        >
+                          <p className="text-sm font-semibold text-slate-900">{candidate.name}</p>
+                          <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-600">
+                            {candidate.description || "暂无详细描述"}
+                          </p>
+                          <div className="mt-2 space-y-1 text-xs text-slate-500">
+                            <p>
+                              <span className="font-medium text-slate-700">输入：</span>
+                              {candidate.inputs?.length ? candidate.inputs.join("、") : "暂无摘要"}
+                            </p>
+                            <p>
+                              <span className="font-medium text-slate-700">输出：</span>
+                              {candidate.outputs?.length ? candidate.outputs.join("、") : "暂无摘要"}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onSelectCandidate(candidate)}
+                            className="mt-3 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
+                          >
+                            选择此模型
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1181,11 +1317,13 @@ function HistoryPanel({
   currentKey,
   onClose,
   onLoad,
+  onDelete,
 }: {
   items: HistoryItem[];
   currentKey: string;
   onClose: () => void;
   onLoad: (item: HistoryItem) => void;
+  onDelete: (item: HistoryItem) => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-end bg-blue-950/35 p-4 backdrop-blur-sm">
@@ -1213,29 +1351,41 @@ function HistoryPanel({
               {items.map((item) => {
                 const active = item.key === currentKey;
                 return (
-                  <button
+                  <div
                     key={item.key}
-                    type="button"
-                    onClick={() => onLoad(item)}
-                    className={`w-full rounded-lg border px-3 py-3 text-left transition ${
-                      active
-                        ? "border-blue-500 bg-linear-to-br from-blue-50 to-sky-50 shadow-sm"
-                        : "border-blue-100 bg-white hover:border-blue-300 hover:bg-blue-50/60"
-                    }`}
+                    className={`group relative w-full rounded-lg border transition ${active
+                      ? "border-blue-500 bg-linear-to-br from-blue-50 to-sky-50 shadow-sm"
+                      : "border-blue-100 bg-white hover:border-blue-300 hover:bg-blue-50/60"
+                      }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="min-w-0 truncate text-sm font-semibold text-slate-900">
-                        {item.plan.title || "未命名方案"}
+                    <button
+                      type="button"
+                      onClick={() => onLoad(item)}
+                      className="w-full px-3 py-3 pr-11 text-left"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="min-w-0 truncate text-sm font-semibold text-slate-900">
+                          {item.plan.title || "未命名方案"}
+                        </p>
+                        {active && <span className="shrink-0 text-xs font-semibold text-blue-700">当前</span>}
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                        {item.plan.goal.objective || item.plan.model.recommendedName || "空白方案"}
                       </p>
-                      {active && <span className="shrink-0 text-xs font-semibold text-blue-700">当前</span>}
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-xs text-slate-500">
-                      {item.plan.goal.objective || item.plan.model.recommendedName || "空白方案"}
-                    </p>
-                    <p className="mt-2 text-xs text-slate-400">
-                      {formatTime(item.plan.updatedAt)}
-                    </p>
-                  </button>
+                      <p className="mt-2 text-xs text-slate-400">
+                        {formatTime(item.plan.updatedAt)}
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDelete(item)}
+                      className="absolute right-2 top-2 rounded-md p-2 text-slate-400 opacity-70 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 focus:opacity-100"
+                      aria-label={`删除方案 ${item.plan.title || "未命名方案"}`}
+                      title="删除方案"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -1259,11 +1409,10 @@ function ChatBubble({
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-          isUser
-            ? "bg-blue-600 text-white shadow-sm"
-            : "border border-blue-100 bg-white text-slate-800 shadow-sm"
-        }`}
+        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${isUser
+          ? "bg-blue-600 text-white shadow-sm"
+          : "border border-blue-100 bg-white text-slate-800 shadow-sm"
+          }`}
       >
         {isStatus && !message.content ? (
           <span className="inline-flex items-center gap-2 text-blue-700">
@@ -1348,9 +1497,8 @@ function ReadOnlyField({
     <div className="block space-y-1.5">
       <span className="text-xs font-semibold text-slate-600">{label}</span>
       <div
-        className={`rounded-lg border border-blue-100 bg-blue-50/45 px-3 py-2 text-sm text-slate-700 ${
-          multiline ? "min-h-20 whitespace-pre-wrap leading-relaxed" : "truncate"
-        }`}
+        className={`rounded-lg border border-blue-100 bg-blue-50/45 px-3 py-2 text-sm text-slate-700 ${multiline ? "min-h-20 whitespace-pre-wrap leading-relaxed" : "truncate"
+          }`}
       >
         {value}
       </div>

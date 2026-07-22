@@ -1,8 +1,16 @@
 import { useOutletContext } from "react-router-dom";
 import React, { useState, useEffect, useMemo } from "react";
 import { ChevronDown, Search, Loader2, Mail, Heart } from "lucide-react";
-import TagRecords, { buildMenuData, type MenuDataItem, type MenuLeafItem } from "../util/record";
-import { getFavoriteModels, toggleFavoriteModel, type FavoriteModel } from "../lib/userCenter.ts";
+import TagRecords, {
+  buildMenuData,
+  type MenuDataItem,
+  type MenuLeafItem,
+} from "../util/record";
+import {
+  getFavoriteModels,
+  toggleFavoriteModel,
+  type FavoriteModel,
+} from "../lib/userCenter.ts";
 
 const BACK_URL = import.meta.env.VITE_BACK_URL;
 
@@ -70,24 +78,37 @@ export default function Resources() {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState(categoryTitles[0]);
   const [inputValue, setInputValue] = useState("");
-  const [activeResourceType, setActiveResourceType] = useState<"models" | "methods">("models");
-  const [favoriteModelNames, setFavoriteModelNames] = useState<Set<string>>(new Set());
+  const [activeResourceType, setActiveResourceType] = useState<
+    "models" | "methods"
+  >("models");
+  const [favoriteModelNames, setFavoriteModelNames] = useState<Set<string>>(
+    new Set(),
+  );
 
   const refreshFavoriteModels = React.useCallback(async () => {
     const favorites = await getFavoriteModels();
-    setFavoriteModelNames(new Set(favorites.map((item: FavoriteModel) => item.name)));
+    setFavoriteModelNames(
+      new Set(favorites.map((item: FavoriteModel) => item.name)),
+    );
   }, []);
 
-  const inferResourceTypeByTopMenu = React.useCallback((title: string): "models" | "methods" => {
-    const normalizedTitle = title.toLowerCase();
-    if (title.includes("方法") || normalizedTitle.includes("method")) {
-      return "methods";
-    }
-    if (title.includes("模型") || title.includes("模拟") || normalizedTitle.includes("model")) {
-      return "models";
-    }
-    return activeResourceType;
-  }, [activeResourceType]);
+  const inferResourceTypeByTopMenu = React.useCallback(
+    (title: string): "models" | "methods" => {
+      const normalizedTitle = title.toLowerCase();
+      if (title.includes("方法") || normalizedTitle.includes("method")) {
+        return "methods";
+      }
+      if (
+        title.includes("模型") ||
+        title.includes("模拟") ||
+        normalizedTitle.includes("model")
+      ) {
+        return "models";
+      }
+      return activeResourceType;
+    },
+    [activeResourceType],
+  );
 
   const onSearch = () => {
     let selectedMenuId: string | null = null;
@@ -98,7 +119,9 @@ export default function Resources() {
       active.subChild !== null &&
       active.subSubChild !== null
     ) {
-      const level2 = menuData[active.parent].children[active.child] as MenuDataItem;
+      const level2 = menuData[active.parent].children[
+        active.child
+      ] as MenuDataItem;
       const level3 = level2.children[active.subChild] as MenuDataItem;
       const level4 = level3.children[active.subSubChild] as MenuLeafItem;
       selectedMenuId = level4.id || null;
@@ -113,10 +136,14 @@ export default function Resources() {
 
   const pageSize = 10;
   const [currentPage, setCurrentPage] = useState(1);
-  const totalPages = useMemo(() => Math.ceil(resourceList.length / pageSize), [resourceList.length]);
+  const totalPages = useMemo(
+    () => Math.ceil(resourceList.length / pageSize),
+    [resourceList.length],
+  );
 
   const currentData = useMemo(
-    () => resourceList.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    () =>
+      resourceList.slice((currentPage - 1) * pageSize, currentPage * pageSize),
     [currentPage, resourceList],
   );
 
@@ -142,21 +169,21 @@ export default function Resources() {
     }
   }, []);
 
-  const fetchAndSetResources = React.useCallback(async (
-    categoryId: string[] | [],
-    keyword: string
-  ) => {
-    setLoading(true);
-    setCurrentPage(1);
+  const fetchAndSetResources = React.useCallback(
+    async (categoryId: string[] | [], keyword: string) => {
+      setLoading(true);
+      setCurrentPage(1);
 
-    const { data } = await fetchResources({
-      categoryId,
-      keyword,
-    });
+      const { data } = await fetchResources({
+        categoryId,
+        keyword,
+      });
 
-    setResourceList(data);
-    setLoading(false);
-  }, [fetchResources]);
+      setResourceList(data);
+      setLoading(false);
+    },
+    [fetchResources],
+  );
 
   const fetchMethods = React.useCallback(async (filter: ResourceFilter) => {
     const { categoryId, keyword } = filter;
@@ -180,46 +207,52 @@ export default function Resources() {
     }
   }, []);
 
-  const fetchAndSetMethods = React.useCallback(async (
-    categoryId: string[] | [],
-    keyword: string
-  ) => {
-    setLoading(true);
-    setCurrentPage(1);
+  const fetchAndSetMethods = React.useCallback(
+    async (categoryId: string[] | [], keyword: string) => {
+      setLoading(true);
+      setCurrentPage(1);
 
-    const { data } = await fetchMethods({
-      categoryId,
-      keyword,
-    });
+      const { data } = await fetchMethods({
+        categoryId,
+        keyword,
+      });
 
-    setResourceList(data);
-    setLoading(false);
-  }, [fetchMethods]);
+      setResourceList(data);
+      setLoading(false);
+    },
+    [fetchMethods],
+  );
 
-  const clickForActiveAndFetchResources = React.useCallback((
-    parentIndex: number | null,
-    childIndex: number | null,
-    subChildIndex: number | null,
-    subSubChildIndex: number | null,
-    node: MenuDataItem | MenuLeafItem,
-    resourceType?: "models" | "methods"
-  ) => {
-    setActive({
-      parent: parentIndex,
-      child: childIndex,
-      subChild: subChildIndex,
-      subSubChild: subSubChildIndex,
-    });
+  const clickForActiveAndFetchResources = React.useCallback(
+    (
+      parentIndex: number | null,
+      childIndex: number | null,
+      subChildIndex: number | null,
+      subSubChildIndex: number | null,
+      node: MenuDataItem | MenuLeafItem,
+      resourceType?: "models" | "methods",
+    ) => {
+      setActive({
+        parent: parentIndex,
+        child: childIndex,
+        subChild: subChildIndex,
+        subSubChild: subSubChildIndex,
+      });
 
-    const currentResourceType = resourceType ?? activeResourceType;
-    const fetchFn = currentResourceType === "methods" ? fetchAndSetMethods : fetchAndSetResources;
+      const currentResourceType = resourceType ?? activeResourceType;
+      const fetchFn =
+        currentResourceType === "methods"
+          ? fetchAndSetMethods
+          : fetchAndSetResources;
 
-    if ("children" in node) {
-      fetchFn(node.id, inputValue);
-    } else {
-      fetchFn([node.id], inputValue);
-    }
-  }, [activeResourceType, fetchAndSetMethods, fetchAndSetResources, inputValue]);
+      if ("children" in node) {
+        fetchFn(node.id, inputValue);
+      } else {
+        fetchFn([node.id], inputValue);
+      }
+    },
+    [activeResourceType, fetchAndSetMethods, fetchAndSetResources, inputValue],
+  );
 
   const handleInitialToggle = (data: MenuDataItem[]) => {
     const initialLevel2: { [key: string]: boolean } = {};
@@ -242,9 +275,16 @@ export default function Resources() {
     return { initialLevel2, initialLevel3 };
   };
 
-  const { initialLevel2, initialLevel3 } = useMemo(() => handleInitialToggle(menuData), []);
-  const [level2Open, setLevel2Open] = useState<{ [key: string]: boolean }>(() => initialLevel2);
-  const [level3Open, setLevel3Open] = useState<{ [key: string]: boolean }>(() => initialLevel3);
+  const { initialLevel2, initialLevel3 } = useMemo(
+    () => handleInitialToggle(menuData),
+    [],
+  );
+  const [level2Open, setLevel2Open] = useState<{ [key: string]: boolean }>(
+    () => initialLevel2,
+  );
+  const [level3Open, setLevel3Open] = useState<{ [key: string]: boolean }>(
+    () => initialLevel3,
+  );
 
   const handleLevlel2Toggle = (parentIndex: number, childIndex: number) => {
     const key = `${parentIndex}-${childIndex}`;
@@ -257,7 +297,7 @@ export default function Resources() {
   const handleLevlel3Toggle = (
     parentIndex: number,
     childIndex: number,
-    subChildIndex: number
+    subChildIndex: number,
   ) => {
     const key = `${parentIndex}-${childIndex}-${subChildIndex}`;
     setLevel3Open((prev) => ({
@@ -289,18 +329,13 @@ export default function Resources() {
       source: "model-library",
     });
     await refreshFavoriteModels();
-    alert(favorited ? `已收藏模型：${item.name}` : `已取消收藏模型：${item.name}`);
+    alert(
+      favorited ? `已收藏模型：${item.name}` : `已取消收藏模型：${item.name}`,
+    );
   };
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="bg-gray-100/20 shadow-ms shadow-white px-6 py-3 min-h-[68px]">
-        <p className={`font-light ${textColor} leading-relaxed text-lg text-[16px]`}>
-          聚焦黄河流域多样化、异构化模拟资源的整合，通过服务化封装、跨平台部署和统一数据模型构建，
-          推动多源模拟资源的协同汇聚与集成。
-        </p>
-      </div>
-
       <div className="flex flex-1 mx-30">
         <aside className="w-1/5 p-4 m-10 bg-gray-50 border-r border-gray-200 shadow-ms shadow-white">
           {menuData.map((menu: MenuDataItem, parentIndex: number) => (
@@ -312,7 +347,9 @@ export default function Resources() {
                     : "text-black"
                 } text-left mb-2`}
                 onClick={() => {
-                  const nextResourceType = inferResourceTypeByTopMenu(menu.title);
+                  const nextResourceType = inferResourceTypeByTopMenu(
+                    menu.title,
+                  );
                   setActiveResourceType(nextResourceType);
                   clickForActiveAndFetchResources(
                     parentIndex,
@@ -360,7 +397,8 @@ export default function Resources() {
                     );
                   }
 
-                  const secondLevelChildrenObj = secondLevelChildren as MenuDataItem;
+                  const secondLevelChildrenObj =
+                    secondLevelChildren as MenuDataItem;
 
                   return (
                     <div key={childIndex}>
@@ -399,94 +437,106 @@ export default function Resources() {
 
                       {isL2Open && (
                         <div className="flex flex-col gap-1 mt-1">
-                          {secondLevelChildrenObj.children.map((thirdLevelChildren, subChildIndex) => {
-                            const isL3Active =
-                              isActivePath(active, 3, subChildIndex) &&
-                              active.parent === parentIndex &&
-                              active.child === childIndex;
+                          {secondLevelChildrenObj.children.map(
+                            (thirdLevelChildren, subChildIndex) => {
+                              const isL3Active =
+                                isActivePath(active, 3, subChildIndex) &&
+                                active.parent === parentIndex &&
+                                active.child === childIndex;
 
-                            const key3 = `${parentIndex}-${childIndex}-${subChildIndex}`;
-                            const isL3Open = level3Open[key3];
+                              const key3 = `${parentIndex}-${childIndex}-${subChildIndex}`;
+                              const isL3Open = level3Open[key3];
 
-                            const thirdLevelChildrenObj = thirdLevelChildren as MenuDataItem;
+                              const thirdLevelChildrenObj =
+                                thirdLevelChildren as MenuDataItem;
 
-                            return (
-                              <div key={subChildIndex}>
-                                <div
-                                  className={`flex items-center w-full ${
-                                    isL3Active && active.subSubChild === null
-                                      ? "bg-blue-200/20 font-semibold shadow-sm rounded-sm"
-                                      : "text-black"
-                                  }`}
-                                >
-                                  <ChevronDown
-                                    size={16}
-                                    className={`ml-1 cursor-pointer transition-transform duration-200 text-black ${
-                                      isL3Open ? "rotate-0" : "-rotate-90"
+                              return (
+                                <div key={subChildIndex}>
+                                  <div
+                                    className={`flex items-center w-full ${
+                                      isL3Active && active.subSubChild === null
+                                        ? "bg-blue-200/20 font-semibold shadow-sm rounded-sm"
+                                        : "text-black"
                                     }`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleLevlel3Toggle(
-                                        parentIndex,
-                                        childIndex,
-                                        subChildIndex,
-                                      );
-                                    }}
-                                  />
-                                  <button
-                                    className="w-full pl-4 font-sans text-[15px] text-left text-black"
-                                    onClick={() =>
-                                      clickForActiveAndFetchResources(
-                                        parentIndex,
-                                        childIndex,
-                                        subChildIndex,
-                                        null,
-                                        thirdLevelChildrenObj,
-                                      )
-                                    }
                                   >
-                                    {thirdLevelChildrenObj.title}
-                                  </button>
-                                </div>
-
-                                {isL3Open && (
-                                  <div className="flex flex-col gap-1 mt-1">
-                                    {(thirdLevelChildrenObj.children as MenuLeafItem[]).map(
-                                      (fourthLevelChildren, subSubChildIndex) => {
-                                        const isL4Active =
-                                          isActivePath(active, 4, subSubChildIndex) &&
-                                          active.parent === parentIndex &&
-                                          active.child === childIndex &&
-                                          active.subChild === subChildIndex;
-
-                                        return (
-                                          <button
-                                            key={subSubChildIndex}
-                                            className={`w-full pl-12 font-sans text-[14px] text-left text-black ${
-                                              isL4Active
-                                                ? "bg-blue-200/20 font-semibold shadow-sm rounded-sm"
-                                                : "text-black"
-                                            }`}
-                                            onClick={() =>
-                                              clickForActiveAndFetchResources(
-                                                parentIndex,
-                                                childIndex,
-                                                subChildIndex,
-                                                subSubChildIndex,
-                                                fourthLevelChildren,
-                                              )
-                                            }
-                                          >
-                                            {fourthLevelChildren.title}
-                                          </button>
+                                    <ChevronDown
+                                      size={16}
+                                      className={`ml-1 cursor-pointer transition-transform duration-200 text-black ${
+                                        isL3Open ? "rotate-0" : "-rotate-90"
+                                      }`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleLevlel3Toggle(
+                                          parentIndex,
+                                          childIndex,
+                                          subChildIndex,
                                         );
-                                      },
-                                    )}
+                                      }}
+                                    />
+                                    <button
+                                      className="w-full pl-4 font-sans text-[15px] text-left text-black"
+                                      onClick={() =>
+                                        clickForActiveAndFetchResources(
+                                          parentIndex,
+                                          childIndex,
+                                          subChildIndex,
+                                          null,
+                                          thirdLevelChildrenObj,
+                                        )
+                                      }
+                                    >
+                                      {thirdLevelChildrenObj.title}
+                                    </button>
                                   </div>
-                                )}
-                              </div>
-                            );
-                          })}
+
+                                  {isL3Open && (
+                                    <div className="flex flex-col gap-1 mt-1">
+                                      {(
+                                        thirdLevelChildrenObj.children as MenuLeafItem[]
+                                      ).map(
+                                        (
+                                          fourthLevelChildren,
+                                          subSubChildIndex,
+                                        ) => {
+                                          const isL4Active =
+                                            isActivePath(
+                                              active,
+                                              4,
+                                              subSubChildIndex,
+                                            ) &&
+                                            active.parent === parentIndex &&
+                                            active.child === childIndex &&
+                                            active.subChild === subChildIndex;
+
+                                          return (
+                                            <button
+                                              key={subSubChildIndex}
+                                              className={`w-full pl-12 font-sans text-[14px] text-left text-black ${
+                                                isL4Active
+                                                  ? "bg-blue-200/20 font-semibold shadow-sm rounded-sm"
+                                                  : "text-black"
+                                              }`}
+                                              onClick={() =>
+                                                clickForActiveAndFetchResources(
+                                                  parentIndex,
+                                                  childIndex,
+                                                  subChildIndex,
+                                                  subSubChildIndex,
+                                                  fourthLevelChildren,
+                                                )
+                                              }
+                                            >
+                                              {fourthLevelChildren.title}
+                                            </button>
+                                          );
+                                        },
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            },
+                          )}
                         </div>
                       )}
                     </div>
@@ -589,7 +639,9 @@ export default function Resources() {
                                   : "text-gray-600"
                               }
                             />
-                            {favoriteModelNames.has(item.name) ? "已收藏" : "收藏"}
+                            {favoriteModelNames.has(item.name)
+                              ? "已收藏"
+                              : "收藏"}
                           </button>
                         )}
                       </div>
@@ -640,17 +692,13 @@ export default function Resources() {
                 <div className="absolute inset-0 bg-white/50 backdrop-blur-xs flex items-start justify-center rounded-lg z-10 my-6">
                   <div className="flex items-center gap-3 mt-40">
                     <Loader2 size={48} className="animate-spin text-blue-500" />
-                    <div className="text-xl text-blue-500">
-                      资源加载中...
-                    </div>
+                    <div className="text-xl text-blue-500">资源加载中...</div>
                   </div>
                 </div>
               ) : (
                 <div className="flex items-center justify-center gap-3 mt-40">
                   <Loader2 size={48} className="animate-spin text-blue-500" />
-                  <div className="text-xl text-blue-500">
-                    资源加载中...
-                  </div>
+                  <div className="text-xl text-blue-500">资源加载中...</div>
                 </div>
               )
             ) : null}

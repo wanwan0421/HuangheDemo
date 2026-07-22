@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import LandcoverCompositionChart from '../components/LandcoverCompositionChart';
-import LandcoverTrendChart from '../components/LandcoverTrendChart';
-import MetricTrendChart from '../components/MetricTrendChart';
-import UnifiedMonitoringMap from '../components/UnifiedMonitoringMap';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import LandcoverCompositionChart from "../components/LandcoverCompositionChart";
+import LandcoverTrendChart from "../components/LandcoverTrendChart";
+import MetricTrendChart from "../components/MetricTrendChart";
+import UnifiedMonitoringMap from "../components/UnifiedMonitoringMap";
 import {
   fetchHydrologyMonths,
   fetchHydrologyStatistics,
@@ -15,9 +15,9 @@ import {
   type LandcoverLegendItem,
   type LandcoverStatisticsResponse,
   type LandcoverTrendPoint,
-} from '../lib/remoteSensing';
+} from "../lib/remoteSensing";
 
-type MonitoringModule = 'air-quality' | 'remote-sensing' | 'runoff';
+type MonitoringModule = "air-quality" | "remote-sensing" | "runoff";
 
 interface StationDetail {
   stationCode: string;
@@ -28,8 +28,11 @@ interface StationDetail {
   controlPoint?: string;
 }
 
-interface AirQualityObservation
-  extends Record<string, string | number | null | undefined> {
+interface AirQualityObservation extends Record<
+  string,
+  string | number | null | undefined
+> {
+  //除了明确规定的字段，还可以有别的字段
   stationCode: string;
   datetime: string;
   date: string;
@@ -52,27 +55,23 @@ interface AirQualityObservation
 }
 
 type MetricKey =
-  | 'aqi'
-  | 'pm25'
-  | 'pm25_24h'
-  | 'pm10'
-  | 'pm10_24h'
-  | 'so2'
-  | 'so2_24h'
-  | 'no2'
-  | 'no2_24h'
-  | 'o3'
-  | 'o3_24h'
-  | 'o3_8h'
-  | 'o3_8h_24h'
-  | 'co'
-  | 'co_24h';
+  | "aqi"
+  | "pm25"
+  | "pm25_24h"
+  | "pm10"
+  | "pm10_24h"
+  | "so2"
+  | "so2_24h"
+  | "no2"
+  | "no2_24h"
+  | "o3"
+  | "o3_24h"
+  | "o3_8h"
+  | "o3_8h_24h"
+  | "co"
+  | "co_24h";
 
-type MetricGroupKey =
-  | 'comprehensive'
-  | 'particulate'
-  | 'ozone'
-  | 'gaseous';
+type MetricGroupKey = "comprehensive" | "particulate" | "ozone" | "gaseous";
 
 interface MetricOption {
   key: MetricKey;
@@ -81,10 +80,10 @@ interface MetricOption {
 }
 
 const DEFAULT_YEARS = [1990, 2000, 2010, 2020, 2025];
-const DEFAULT_STATION_CODE = '1322A';
-const DATA_MIN_DATE = '2020-05-08';
-const DATA_MAX_DATE = '2020-10-10';
-const AIR_QUALITY_BASE_URL = import.meta.env.VITE_BACK_URL?.trim() || '/api';
+const DEFAULT_STATION_CODE = "1322A";
+const DATA_MIN_DATE = "2020-05-08";
+const DATA_MAX_DATE = "2020-10-10";
+const AIR_QUALITY_BASE_URL = import.meta.env.VITE_BACK_URL?.trim() || "/api";
 
 const METRIC_GROUPS: Record<
   MetricGroupKey,
@@ -94,48 +93,51 @@ const METRIC_GROUPS: Record<
   }
 > = {
   comprehensive: {
-    label: '综合指标',
-    metrics: [{ key: 'aqi', label: 'AQI', unit: '' }],
+    label: "综合指标",
+    metrics: [{ key: "aqi", label: "AQI", unit: "" }],
   },
   particulate: {
-    label: '颗粒物',
+    label: "颗粒物",
     metrics: [
-      { key: 'pm25', label: 'PM2.5', unit: 'ug/m3' },
-      { key: 'pm25_24h', label: 'PM2.5 24h', unit: 'ug/m3' },
-      { key: 'pm10', label: 'PM10', unit: 'ug/m3' },
-      { key: 'pm10_24h', label: 'PM10 24h', unit: 'ug/m3' },
+      { key: "pm25", label: "PM2.5", unit: "ug/m3" },
+      { key: "pm25_24h", label: "PM2.5 24h", unit: "ug/m3" },
+      { key: "pm10", label: "PM10", unit: "ug/m3" },
+      { key: "pm10_24h", label: "PM10 24h", unit: "ug/m3" },
     ],
   },
   ozone: {
-    label: '臭氧指标',
+    label: "臭氧指标",
     metrics: [
-      { key: 'o3', label: 'O3', unit: 'ug/m3' },
-      { key: 'o3_24h', label: 'O3 24h', unit: 'ug/m3' },
-      { key: 'o3_8h', label: 'O3 8h', unit: 'ug/m3' },
-      { key: 'o3_8h_24h', label: 'O3 8h 24h', unit: 'ug/m3' },
+      { key: "o3", label: "O3", unit: "ug/m3" },
+      { key: "o3_24h", label: "O3 24h", unit: "ug/m3" },
+      { key: "o3_8h", label: "O3 8h", unit: "ug/m3" },
+      { key: "o3_8h_24h", label: "O3 8h 24h", unit: "ug/m3" },
     ],
   },
   gaseous: {
-    label: '气态污染物',
+    label: "气态污染物",
     metrics: [
-      { key: 'so2', label: 'SO2', unit: 'ug/m3' },
-      { key: 'so2_24h', label: 'SO2 24h', unit: 'ug/m3' },
-      { key: 'no2', label: 'NO2', unit: 'ug/m3' },
-      { key: 'no2_24h', label: 'NO2 24h', unit: 'ug/m3' },
-      { key: 'co', label: 'CO', unit: 'mg/m3' },
-      { key: 'co_24h', label: 'CO 24h', unit: 'mg/m3' },
+      { key: "so2", label: "SO2", unit: "ug/m3" },
+      { key: "so2_24h", label: "SO2 24h", unit: "ug/m3" },
+      { key: "no2", label: "NO2", unit: "ug/m3" },
+      { key: "no2_24h", label: "NO2 24h", unit: "ug/m3" },
+      { key: "co", label: "CO", unit: "mg/m3" },
+      { key: "co_24h", label: "CO 24h", unit: "mg/m3" },
     ],
   },
 };
 
-const RUNOFF_MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => index + 1);
+const RUNOFF_MONTH_OPTIONS = Array.from(
+  { length: 12 },
+  (_, index) => index + 1,
+);
 
 async function fetchStationObservations(
   stationCode: string,
   queryStartDate: string,
   queryEndDate: string,
 ) {
-  const base = AIR_QUALITY_BASE_URL.endsWith('/')
+  const base = AIR_QUALITY_BASE_URL.endsWith("/")
     ? AIR_QUALITY_BASE_URL.slice(0, -1)
     : AIR_QUALITY_BASE_URL;
   const response = await fetch(
@@ -143,7 +145,7 @@ async function fetchStationObservations(
   );
 
   if (!response.ok) {
-    throw new Error('Failed to load station observations');
+    throw new Error("Failed to load station observations");
   }
 
   return (await response.json()) as AirQualityObservation[];
@@ -151,11 +153,12 @@ async function fetchStationObservations(
 
 export default function Monitoring() {
   const [analysisModule, setAnalysisModule] =
-    useState<MonitoringModule>('remote-sensing');
-  const [showAirQuality, setShowAirQuality] = useState(true);
+    useState<MonitoringModule>("remote-sensing"); //最开始打开哪个分析面板
+  const [showAirQuality, setShowAirQuality] = useState(true); //规定最开始是否显示空气质量图层
   const [showRemoteSensing, setShowRemoteSensing] = useState(true);
   const [showRunoff, setShowRunoff] = useState(false);
   const [focusJiyuan, setFocusJiyuan] = useState(false);
+  const [jiyuanFocusRequest, setJiyuanFocusRequest] = useState(0);
 
   const [selectedStationCode, setSelectedStationCode] =
     useState<string>(DEFAULT_STATION_CODE);
@@ -173,9 +176,9 @@ export default function Monitoring() {
     useState<LandcoverStatisticsResponse | null>(null);
   const [loadingComposition, setLoadingComposition] = useState(false);
   const [compositionError, setCompositionError] = useState<string | null>(null);
-  const [selectedLandcoverCode, setSelectedLandcoverCode] = useState<number | null>(
-    null,
-  );
+  const [selectedLandcoverCode, setSelectedLandcoverCode] = useState<
+    number | null
+  >(null);
   const [trendData, setTrendData] = useState<LandcoverTrendPoint[]>([]);
   const [loadingTrend, setLoadingTrend] = useState(false);
   const [trendError, setTrendError] = useState<string | null>(null);
@@ -191,26 +194,28 @@ export default function Monitoring() {
   const [runoffStatistics, setRunoffStatistics] =
     useState<HydrologyStatisticsResponse | null>(null);
   const [loadingRunoffStatistics, setLoadingRunoffStatistics] = useState(false);
-  const [runoffStatisticsError, setRunoffStatisticsError] = useState<string | null>(
+  const [runoffStatisticsError, setRunoffStatisticsError] = useState<
+    string | null
+  >(null);
+
+  const [selectedStation, setSelectedStation] = useState<StationDetail | null>(
     null,
   );
-
-  const [selectedStation, setSelectedStation] = useState<StationDetail | null>(null);
   const [stationLoading, setStationLoading] = useState(false);
   const [stationError, setStationError] = useState<string | null>(null);
   const [observations, setObservations] = useState<AirQualityObservation[]>([]);
   const [observationLoading, setObservationLoading] = useState(false);
   const [observationError, setObservationError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState(DATA_MIN_DATE);
-  const [endDate, setEndDate] = useState('2020-05-14');
+  const [endDate, setEndDate] = useState("2020-05-14");
   const currentDateRangeRef = useRef({
     startDate: DATA_MIN_DATE,
-    endDate: '2020-05-14',
+    endDate: "2020-05-14",
   });
   const [dateRangeError, setDateRangeError] = useState<string | null>(null);
   const [selectedMetricGroup, setSelectedMetricGroup] =
-    useState<MetricGroupKey>('comprehensive');
-  const [selectedMetric, setSelectedMetric] = useState<MetricKey>('aqi');
+    useState<MetricGroupKey>("comprehensive");
+  const [selectedMetric, setSelectedMetric] = useState<MetricKey>("aqi");
 
   useEffect(() => {
     if (!showAirQuality && !showRemoteSensing && !showRunoff) {
@@ -222,13 +227,13 @@ export default function Monitoring() {
     const visibleModules: MonitoringModule[] = [];
 
     if (showAirQuality) {
-      visibleModules.push('air-quality');
+      visibleModules.push("air-quality");
     }
     if (showRemoteSensing) {
-      visibleModules.push('remote-sensing');
+      visibleModules.push("remote-sensing");
     }
     if (showRunoff) {
-      visibleModules.push('runoff');
+      visibleModules.push("runoff");
     }
 
     if (!visibleModules.includes(analysisModule) && visibleModules.length > 0) {
@@ -255,8 +260,8 @@ export default function Monitoring() {
           );
         }
       } catch (error) {
-        console.error('Failed to load landcover years:', error);
-        setYearError('土地覆盖年份数据加载失败，当前先使用默认年份。');
+        console.error("Failed to load landcover years:", error);
+        setYearError("土地覆盖年份数据加载失败，当前先使用默认年份。");
       } finally {
         setLoadingYears(false);
       }
@@ -275,8 +280,8 @@ export default function Monitoring() {
           (currentCode) => currentCode ?? legend[0]?.code ?? null,
         );
       } catch (error) {
-        console.error('Failed to load landcover legend:', error);
-        setLegendError('土地覆盖图例加载失败。');
+        console.error("Failed to load landcover legend:", error);
+        setLegendError("土地覆盖图例加载失败。");
       }
     };
 
@@ -292,9 +297,9 @@ export default function Monitoring() {
         const statistics = await fetchLandcoverStatistics(selectedYear);
         setCompositionData(statistics);
       } catch (error) {
-        console.error('Failed to load landcover composition:', error);
+        console.error("Failed to load landcover composition:", error);
         setCompositionData(null);
-        setCompositionError('土地覆盖面积组成数据加载失败。');
+        setCompositionError("土地覆盖面积组成数据加载失败。");
       } finally {
         setLoadingComposition(false);
       }
@@ -317,9 +322,9 @@ export default function Monitoring() {
         const trend = await fetchLandcoverTrend(selectedLandcoverCode);
         setTrendData(trend);
       } catch (error) {
-        console.error('Failed to load landcover trend:', error);
+        console.error("Failed to load landcover trend:", error);
         setTrendData([]);
-        setTrendError('土地覆盖年际变化趋势数据加载失败。');
+        setTrendError("土地覆盖年际变化趋势数据加载失败。");
       } finally {
         setLoadingTrend(false);
       }
@@ -343,8 +348,8 @@ export default function Monitoring() {
           );
         }
       } catch (error) {
-        console.error('Failed to load hydrology years:', error);
-        setRunoffYearError('径流量年份数据加载失败。');
+        console.error("Failed to load hydrology years:", error);
+        setRunoffYearError("径流量年份数据加载失败。");
       } finally {
         setLoadingRunoffYears(false);
       }
@@ -368,7 +373,9 @@ export default function Monitoring() {
         if (months.length > 0) {
           setRunoffMonths(months);
           setSelectedRunoffMonth((currentMonth) =>
-            months.includes(currentMonth) ? currentMonth : months[months.length - 1],
+            months.includes(currentMonth)
+              ? currentMonth
+              : months[months.length - 1],
           );
           return;
         }
@@ -376,9 +383,9 @@ export default function Monitoring() {
         setRunoffMonths([]);
         setSelectedRunoffMonth(1);
       } catch (error) {
-        console.error('Failed to load hydrology months:', error);
+        console.error("Failed to load hydrology months:", error);
         setRunoffMonths([]);
-        setRunoffMonthError('径流量月份数据加载失败。');
+        setRunoffMonthError("径流量月份数据加载失败。");
       } finally {
         setLoadingRunoffMonths(false);
       }
@@ -404,9 +411,9 @@ export default function Monitoring() {
         );
         setRunoffStatistics(statistics);
       } catch (error) {
-        console.error('Failed to load hydrology statistics:', error);
+        console.error("Failed to load hydrology statistics:", error);
         setRunoffStatistics(null);
-        setRunoffStatisticsError('径流量统计数据加载失败。');
+        setRunoffStatisticsError("径流量统计数据加载失败。");
       } finally {
         setLoadingRunoffStatistics(false);
       }
@@ -426,7 +433,7 @@ export default function Monitoring() {
 
       const [stationResponse, observationData] = await Promise.all([
         fetch(
-          `${AIR_QUALITY_BASE_URL.endsWith('/') ? AIR_QUALITY_BASE_URL.slice(0, -1) : AIR_QUALITY_BASE_URL}/huanghe-monitoring/stations/${stationCode}`,
+          `${AIR_QUALITY_BASE_URL.endsWith("/") ? AIR_QUALITY_BASE_URL.slice(0, -1) : AIR_QUALITY_BASE_URL}/huanghe-monitoring/stations/${stationCode}`,
         ),
         fetchStationObservations(
           stationCode,
@@ -436,19 +443,19 @@ export default function Monitoring() {
       ]);
 
       if (!stationResponse.ok) {
-        throw new Error('Failed to load station detail');
+        throw new Error("Failed to load station detail");
       }
 
       const stationDetail: StationDetail = await stationResponse.json();
 
       setSelectedStation(stationDetail);
       setObservations(observationData);
-      setSelectedMetricGroup('comprehensive');
-      setSelectedMetric('aqi');
+      setSelectedMetricGroup("comprehensive");
+      setSelectedMetric("aqi");
     } catch (error) {
-      console.error('Failed to load station related data:', error);
-      setStationError('站点详情加载失败，请稍后重试。');
-      setObservationError('监测指标数据加载失败，请稍后重试。');
+      console.error("Failed to load station related data:", error);
+      setStationError("站点详情加载失败，请稍后重试。");
+      setObservationError("监测指标数据加载失败，请稍后重试。");
     } finally {
       setStationLoading(false);
       setObservationLoading(false);
@@ -519,17 +526,17 @@ export default function Monitoring() {
 
   const handleDateRangeQuery = async () => {
     if (!selectedStation) {
-      setDateRangeError('请先在地图中选择一个站点。');
+      setDateRangeError("请先在地图中选择一个站点。");
       return;
     }
 
     if (!startDate || !endDate) {
-      setDateRangeError('请选择完整的开始日期和结束日期。');
+      setDateRangeError("请选择完整的开始日期和结束日期。");
       return;
     }
 
     if (startDate > endDate) {
-      setDateRangeError('开始日期不能晚于结束日期。');
+      setDateRangeError("开始日期不能晚于结束日期。");
       return;
     }
 
@@ -546,8 +553,11 @@ export default function Monitoring() {
 
       setObservations(observationData);
     } catch (error) {
-      console.error('Failed to query station observations by date range:', error);
-      setObservationError('监测指标数据加载失败，请稍后重试。');
+      console.error(
+        "Failed to query station observations by date range:",
+        error,
+      );
+      setObservationError("监测指标数据加载失败，请稍后重试。");
     } finally {
       setObservationLoading(false);
     }
@@ -556,10 +566,10 @@ export default function Monitoring() {
   const getMetricAverage = (key: keyof AirQualityObservation): string => {
     const values = observations
       .map((item) => item[key])
-      .filter((value): value is number => typeof value === 'number');
+      .filter((value): value is number => typeof value === "number");
 
     if (values.length === 0) {
-      return '--';
+      return "--";
     }
 
     return (
@@ -570,20 +580,20 @@ export default function Monitoring() {
   const getMetricMax = (key: keyof AirQualityObservation): string => {
     const values = observations
       .map((item) => item[key])
-      .filter((value): value is number => typeof value === 'number');
+      .filter((value): value is number => typeof value === "number");
 
     if (values.length === 0) {
-      return '--';
+      return "--";
     }
 
     return Math.max(...values).toFixed(1);
   };
 
   const summaryCards = [
-    { title: 'AQI 均值', value: getMetricAverage('aqi'), unit: '' },
-    { title: 'PM2.5 均值', value: getMetricAverage('pm25'), unit: 'ug/m3' },
-    { title: 'PM10 均值', value: getMetricAverage('pm10'), unit: 'ug/m3' },
-    { title: 'O3 最大值', value: getMetricMax('o3'), unit: 'ug/m3' },
+    { title: "AQI 均值", value: getMetricAverage("aqi"), unit: "" },
+    { title: "PM2.5 均值", value: getMetricAverage("pm25"), unit: "ug/m3" },
+    { title: "PM10 均值", value: getMetricAverage("pm10"), unit: "ug/m3" },
+    { title: "O3 最大值", value: getMetricMax("o3"), unit: "ug/m3" },
   ];
 
   const compositionViewData = compositionData
@@ -635,13 +645,15 @@ export default function Monitoring() {
                     type="button"
                     onClick={() => {
                       setShowAirQuality((current) =>
-                        current && !showRemoteSensing && !showRunoff ? true : !current,
+                        current && !showRemoteSensing && !showRunoff
+                          ? true
+                          : !current,
                       );
                     }}
                     className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
                       showAirQuality
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-white/80 hover:text-slate-900"
                     }`}
                   >
                     空气质量
@@ -652,8 +664,8 @@ export default function Monitoring() {
                     onClick={handleRemoteLayerToggle}
                     className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
                       showRemoteSensing
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-white/80 hover:text-slate-900"
                     }`}
                   >
                     遥感土地覆盖
@@ -664,8 +676,8 @@ export default function Monitoring() {
                     onClick={handleRunoffLayerToggle}
                     className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
                       showRunoff
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-white/80 hover:text-slate-900"
                     }`}
                   >
                     径流量
@@ -680,12 +692,12 @@ export default function Monitoring() {
                 <div className="inline-flex w-fit rounded-2xl bg-slate-100/80 p-1">
                   <button
                     type="button"
-                    onClick={() => setAnalysisModule('air-quality')}
+                    onClick={() => setAnalysisModule("air-quality")}
                     disabled={!showAirQuality}
                     className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                      analysisModule === 'air-quality'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      analysisModule === "air-quality"
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     } disabled:cursor-not-allowed disabled:opacity-40`}
                   >
                     空气质量
@@ -693,12 +705,12 @@ export default function Monitoring() {
 
                   <button
                     type="button"
-                    onClick={() => setAnalysisModule('remote-sensing')}
+                    onClick={() => setAnalysisModule("remote-sensing")}
                     disabled={!showRemoteSensing}
                     className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                      analysisModule === 'remote-sensing'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      analysisModule === "remote-sensing"
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     } disabled:cursor-not-allowed disabled:opacity-40`}
                   >
                     遥感土地覆盖
@@ -706,12 +718,12 @@ export default function Monitoring() {
 
                   <button
                     type="button"
-                    onClick={() => setAnalysisModule('runoff')}
+                    onClick={() => setAnalysisModule("runoff")}
                     disabled={!showRunoff}
                     className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                      analysisModule === 'runoff'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      analysisModule === "runoff"
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     } disabled:cursor-not-allowed disabled:opacity-40`}
                   >
                     径流量
@@ -725,11 +737,14 @@ export default function Monitoring() {
                 <div className="inline-flex w-fit rounded-2xl bg-slate-100/80 p-1">
                   <button
                     type="button"
-                    onClick={() => setFocusJiyuan(true)}
+                    onClick={() => {
+                      setFocusJiyuan(true);
+                      setJiyuanFocusRequest((request) => request + 1);
+                    }}
                     className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
                       focusJiyuan
-                        ? 'bg-emerald-700 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                        ? "bg-emerald-700 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     }`}
                   >
                     济源示范区
@@ -740,8 +755,8 @@ export default function Monitoring() {
                     onClick={() => setFocusJiyuan(false)}
                     className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
                       !focusJiyuan
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     }`}
                   >
                     返回全流域
@@ -759,6 +774,7 @@ export default function Monitoring() {
               showRemoteSensing={showRemoteSensing}
               showRunoff={showRunoff}
               focusJiyuan={focusJiyuan}
+              jiyuanFocusRequest={jiyuanFocusRequest}
               selectedYear={selectedYear}
               selectedRunoffYear={selectedRunoffYear}
               selectedRunoffMonth={selectedRunoffMonth}
@@ -817,7 +833,7 @@ export default function Monitoring() {
           <div className="pointer-events-none relative z-10 hidden min-h-[calc(100vh-170px)] xl:block">
             <aside className="pointer-events-auto absolute inset-y-0 left-0 w-[344px] overflow-hidden border-r border-white/50 bg-white/32 shadow-[18px_0_40px_rgba(15,23,42,0.10)] backdrop-blur-xl">
               <div className="flex h-full flex-col overflow-y-auto p-6 pt-14">
-                {analysisModule === 'remote-sensing' ? (
+                {analysisModule === "remote-sensing" ? (
                   <>
                     <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">
                       Remote Sensing
@@ -876,7 +892,7 @@ export default function Monitoring() {
                       )}
                     </div>
                   </>
-                ) : analysisModule === 'runoff' ? (
+                ) : analysisModule === "runoff" ? (
                   <>
                     <div className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">
                       Hydrology
@@ -910,18 +926,21 @@ export default function Monitoring() {
                             <select
                               value={selectedRunoffYear}
                               onChange={(event) =>
-                                setSelectedRunoffYear(Number(event.target.value))
+                                setSelectedRunoffYear(
+                                  Number(event.target.value),
+                                )
                               }
                               disabled={loadingRunoffYears}
                               className="min-w-[112px] appearance-none rounded-full border border-white/70 bg-white/85 px-3 py-2 pr-8 text-xs font-medium text-slate-800 shadow-sm transition hover:bg-white focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-70"
                             >
-                              {(runoffYears.length > 0 ? runoffYears : DEFAULT_YEARS).map(
-                                (year) => (
-                                  <option key={year} value={year}>
-                                    {year} 年
-                                  </option>
-                                ),
-                              )}
+                              {(runoffYears.length > 0
+                                ? runoffYears
+                                : DEFAULT_YEARS
+                              ).map((year) => (
+                                <option key={year} value={year}>
+                                  {year} 年
+                                </option>
+                              ))}
                             </select>
                             <span
                               className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[10px] text-slate-500"
@@ -947,9 +966,13 @@ export default function Monitoring() {
                             <select
                               value={selectedRunoffMonth}
                               onChange={(event) =>
-                                setSelectedRunoffMonth(Number(event.target.value))
+                                setSelectedRunoffMonth(
+                                  Number(event.target.value),
+                                )
                               }
-                              disabled={loadingRunoffMonths || runoffMonths.length === 0}
+                              disabled={
+                                loadingRunoffMonths || runoffMonths.length === 0
+                              }
                               className="min-w-[112px] appearance-none rounded-full border border-white/70 bg-white/85 px-3 py-2 pr-8 text-xs font-medium text-slate-800 shadow-sm transition hover:bg-white focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-70"
                             >
                               {(runoffMonths.length > 0
@@ -1003,7 +1026,7 @@ export default function Monitoring() {
 
             <aside className="pointer-events-auto absolute inset-y-0 right-0 w-[392px] overflow-hidden border-l border-white/50 bg-white/32 shadow-[-18px_0_40px_rgba(15,23,42,0.10)] backdrop-blur-xl">
               <div className="flex h-full flex-col overflow-y-auto p-6 pt-14">
-                {analysisModule === 'remote-sensing' ? (
+                {analysisModule === "remote-sensing" ? (
                   <>
                     <div className="text-xs font-semibold uppercase tracking-[0.24em] text-fuchsia-600">
                       Analytics
@@ -1034,7 +1057,7 @@ export default function Monitoring() {
                       />
                     </div>
                   </>
-                ) : analysisModule === 'runoff' ? (
+                ) : analysisModule === "runoff" ? (
                   <>
                     <div className="text-xs font-semibold uppercase tracking-[0.24em] text-fuchsia-600">
                       Analytics
@@ -1160,7 +1183,7 @@ function renderAirStationPanel({
           <InfoRow label="纬度" value={selectedStation.latitude.toFixed(6)} />
           <InfoRow
             label="对照点"
-            value={selectedStation.controlPoint === 'Y' ? '是' : '否'}
+            value={selectedStation.controlPoint === "Y" ? "是" : "否"}
           />
         </div>
       </div>
@@ -1171,13 +1194,20 @@ function renderAirStationPanel({
           const style = getSummaryCardStyle(card.title, card.value);
 
           return (
-            <div key={card.title} className={`rounded-2xl px-3 py-3 ${style.card}`}>
-              <div className={`text-xs font-medium ${style.title}`}>{card.title}</div>
+            <div
+              key={card.title}
+              className={`rounded-2xl px-3 py-3 ${style.card}`}
+            >
+              <div className={`text-xs font-medium ${style.title}`}>
+                {card.title}
+              </div>
               <div className={`mt-1.5 text-xl font-bold ${style.value}`}>
                 {card.value}
               </div>
               {card.unit && (
-                <div className={`mt-1 text-[11px] ${style.unit}`}>{card.unit}</div>
+                <div className={`mt-1 text-[11px] ${style.unit}`}>
+                  {card.unit}
+                </div>
               )}
             </div>
           );
@@ -1263,7 +1293,9 @@ function renderAirAnalysisPanel({
 
         <div className="mt-4 grid grid-cols-1 gap-3">
           <label className="block">
-            <span className="mb-1.5 block text-sm text-slate-600">开始日期</span>
+            <span className="mb-1.5 block text-sm text-slate-600">
+              开始日期
+            </span>
             <input
               type="date"
               value={startDate}
@@ -1275,7 +1307,9 @@ function renderAirAnalysisPanel({
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-sm text-slate-600">结束日期</span>
+            <span className="mb-1.5 block text-sm text-slate-600">
+              结束日期
+            </span>
             <input
               type="date"
               value={endDate}
@@ -1307,7 +1341,7 @@ function renderAirAnalysisPanel({
 
         {observationTimeRange && (
           <div className="mt-2 text-xs leading-5 text-slate-400">
-            当前数据展示范围：{observationTimeRange.start} 至{' '}
+            当前数据展示范围：{observationTimeRange.start} 至{" "}
             {observationTimeRange.end}
           </div>
         )}
@@ -1331,8 +1365,8 @@ function renderAirAnalysisPanel({
                 onClick={() => handleMetricGroupChange(groupKey)}
                 className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                   isActive
-                    ? 'bg-blue-400 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? "bg-blue-400 text-white shadow-sm"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
                 {group.label}
@@ -1352,8 +1386,8 @@ function renderAirAnalysisPanel({
                 onClick={() => setSelectedMetric(metric.key)}
                 className={`rounded-xl border px-3 py-2 text-sm transition ${
                   isActive
-                    ? 'border-blue-500 bg-blue-50 font-semibold text-blue-700'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                    ? "border-blue-500 bg-blue-50 font-semibold text-blue-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                 }`}
               >
                 {metric.label}
@@ -1366,8 +1400,8 @@ function renderAirAnalysisPanel({
       <MetricTrendChart
         observations={observations}
         metricKey={selectedMetric}
-        metricLabel={selectedMetricInfo?.label ?? '--'}
-        metricUnit={selectedMetricInfo?.unit ?? ''}
+        metricLabel={selectedMetricInfo?.label ?? "--"}
+        metricUnit={selectedMetricInfo?.unit ?? ""}
       />
     </div>
   );
@@ -1401,7 +1435,9 @@ function renderRunoffAnalysisPanel({
   if (!data) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6">
-        <p className="text-sm leading-7 text-slate-500">当前暂无径流量统计数据。</p>
+        <p className="text-sm leading-7 text-slate-500">
+          当前暂无径流量统计数据。
+        </p>
         <p className="mt-2 text-sm leading-7 text-slate-500">
           请切换年份或月份后重试。
         </p>
@@ -1410,10 +1446,14 @@ function renderRunoffAnalysisPanel({
   }
 
   const cards = [
-    { title: '参与天数', value: `${data.daysCount}`, unit: '天' },
-    { title: '有效像元数量', value: formatInteger(data.validPixelCount), unit: '' },
-    { title: '平均径流量', value: formatDecimal(data.averageRunoff), unit: '' },
-    { title: '最大径流量', value: formatDecimal(data.maxRunoff), unit: '' },
+    { title: "参与天数", value: `${data.daysCount}`, unit: "天" },
+    {
+      title: "有效像元数量",
+      value: formatInteger(data.validPixelCount),
+      unit: "",
+    },
+    { title: "平均径流量", value: formatDecimal(data.averageRunoff), unit: "" },
+    { title: "最大径流量", value: formatDecimal(data.maxRunoff), unit: "" },
   ];
 
   return (
@@ -1431,7 +1471,9 @@ function renderRunoffAnalysisPanel({
             key={card.title}
             className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
           >
-            <div className="text-sm font-medium text-slate-500">{card.title}</div>
+            <div className="text-sm font-medium text-slate-500">
+              {card.title}
+            </div>
             <div className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
               {card.value}
             </div>
@@ -1460,11 +1502,11 @@ function renderJiyuanOverviewCard(isFocused: boolean) {
         <span
           className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
             isFocused
-              ? 'bg-emerald-100 text-emerald-700'
-              : 'bg-slate-100 text-slate-600'
+              ? "bg-emerald-100 text-emerald-700"
+              : "bg-slate-100 text-slate-600"
           }`}
         >
-          {isFocused ? '已聚焦' : '未聚焦'}
+          {isFocused ? "已聚焦" : "未聚焦"}
         </span>
       </div>
 
@@ -1476,7 +1518,7 @@ function renderJiyuanOverviewCard(isFocused: boolean) {
       <div className="mt-4">
         <div className="text-sm font-semibold text-slate-900">当前支持数据</div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {['空气质量', '土地覆盖', '径流量'].map((item) => (
+          {["空气质量", "土地覆盖", "径流量"].map((item) => (
             <span
               key={item}
               className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700"
@@ -1490,13 +1532,7 @@ function renderJiyuanOverviewCard(isFocused: boolean) {
   );
 }
 
-function InfoRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
       <span className="shrink-0 text-slate-500">{label}</span>
@@ -1510,42 +1546,42 @@ function getSummaryCardStyle(title: string, value: string | number) {
 
   if (Number.isNaN(num)) {
     return {
-      card: 'bg-slate-50',
-      title: 'text-slate-500',
-      value: 'text-slate-900',
-      unit: 'text-slate-500',
+      card: "bg-slate-50",
+      title: "text-slate-500",
+      value: "text-slate-900",
+      unit: "text-slate-500",
     };
   }
 
   let isWarning = false;
 
   switch (title) {
-    case 'AQI 均值':
+    case "AQI 均值":
       isWarning = num > 100;
       break;
-    case 'PM2.5 均值':
+    case "PM2.5 均值":
       isWarning = num > 60;
       break;
-    case 'PM10 均值':
+    case "PM10 均值":
       isWarning = num > 120;
       break;
-    case 'O3 最大值':
+    case "O3 最大值":
       isWarning = num > 200;
       break;
   }
 
   return isWarning
     ? {
-        card: 'bg-[#FFF3F3] border border-[#F4CCCC]',
-        title: 'text-[#C24141]',
-        value: 'text-[#991B1B]',
-        unit: 'text-[#B65A5A]',
+        card: "bg-[#FFF3F3] border border-[#F4CCCC]",
+        title: "text-[#C24141]",
+        value: "text-[#991B1B]",
+        unit: "text-[#B65A5A]",
       }
     : {
-        card: 'bg-[#F1FBF5] border border-[#CDEEDB]',
-        title: 'text-[#2F855A]',
-        value: 'text-[#166534]',
-        unit: 'text-[#2F855A]',
+        card: "bg-[#F1FBF5] border border-[#CDEEDB]",
+        title: "text-[#2F855A]",
+        value: "text-[#166534]",
+        unit: "text-[#2F855A]",
       };
 }
 
@@ -1557,21 +1593,21 @@ function formatDateTime(dateTime: string) {
   }
 
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hour = String(date.getHours()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
 
   return `${year}-${month}-${day} ${hour}:00`;
 }
 
 function formatInteger(value: number) {
-  return value.toLocaleString('zh-CN', {
+  return value.toLocaleString("zh-CN", {
     maximumFractionDigits: 0,
   });
 }
 
 function formatDecimal(value: number) {
-  return value.toLocaleString('zh-CN', {
+  return value.toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -1588,20 +1624,21 @@ function getMapTitle({
   showRunoff: boolean;
   analysisModule: MonitoringModule;
 }) {
-  const visibleCount = [showAirQuality, showRemoteSensing, showRunoff].filter(Boolean)
-    .length;
+  const visibleCount = [showAirQuality, showRemoteSensing, showRunoff].filter(
+    Boolean,
+  ).length;
 
   if (visibleCount > 1) {
-    return '黄河流域多源融合监测地图';
+    return "黄河流域多源融合监测地图";
   }
 
-  if (showRunoff || analysisModule === 'runoff') {
-    return '黄河流域径流量月平均空间分布';
+  if (showRunoff || analysisModule === "runoff") {
+    return "黄河流域径流量月平均空间分布";
   }
 
-  if (showRemoteSensing || analysisModule === 'remote-sensing') {
-    return '黄河流域土地覆盖空间分布';
+  if (showRemoteSensing || analysisModule === "remote-sensing") {
+    return "黄河流域土地覆盖空间分布";
   }
 
-  return '黄河流域空气质量监测站点分布';
+  return "黄河流域空气质量监测站点分布";
 }
