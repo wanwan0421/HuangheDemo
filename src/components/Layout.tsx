@@ -23,6 +23,19 @@ const navItems = [
   { key: "/about", label: "关于", to: "/about" },
 ];
 
+const protectedPathPrefixes = [
+  "/resources",
+  "/monitoring",
+  "/chat",
+  "/simulation",
+  "/profile",
+];
+
+const isProtectedPath = (pathname: string) =>
+  protectedPathPrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+
 export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -65,7 +78,7 @@ export default function Layout() {
   useEffect(() => {
     const handleAuthExpired = () => {
       setAuthUser(null);
-      if (!isAuthPage) {
+      if (isProtectedPath(location.pathname)) {
         navigate("/login", {
           replace: true,
           state: { from: location.pathname },
@@ -75,7 +88,7 @@ export default function Layout() {
     window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
     return () =>
       window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
-  }, [isAuthPage, location.pathname, navigate]);
+  }, [location.pathname, navigate]);
 
   useEffect(() => {
     if (isAuthPage || !authUser) return;
@@ -112,10 +125,12 @@ export default function Layout() {
         isEndingSession = true;
         await logout();
         setAuthUser(null);
-        navigate("/login", {
-          replace: true,
-          state: { from: location.pathname },
-        });
+        if (isProtectedPath(location.pathname)) {
+          navigate("/login", {
+            replace: true,
+            state: { from: location.pathname },
+          });
+        }
         return;
       }
 
