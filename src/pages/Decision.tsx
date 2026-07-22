@@ -6,6 +6,7 @@ import type { Message } from "../types";
 import TaskSpecCard from "../components/TaskSpecCard";
 import { RequirementTooltip, type ModelContractItem } from "../components/ModelContract";
 import { isModelFavorited, toggleFavoriteModel } from "../lib/userCenter.ts";
+import { authenticatedFetch } from "../lib/auth";
 import ChatPanel from "../components/ChatPanel";
 import DataScanModal from "../components/DataScanModal";
 import {
@@ -29,12 +30,7 @@ import { useDecisionSessionRoute } from "../util/useDecisionSessionRoute";
 // 后端API基础URL
 const BACK_URL = import.meta.env.VITE_BACK_URL;
 
-const authFetch = (input: RequestInfo | URL, init?: RequestInit) => {
-  return fetch(input, {
-    ...init,
-    credentials: init?.credentials ?? "include",
-  });
-};
+const authFetch = authenticatedFetch;
 
 export default function IntelligentDecision() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -511,9 +507,7 @@ export default function IntelligentDecision() {
 
     // 建立 SSE 连接（Node → Python → Agent）
     const es = new EventSource(
-      `${BACK_URL}/chat/sessions/${currentSessionId}/chat?query=${encodeURIComponent(
-        prompt,
-      )}`,
+      `${BACK_URL}/chat/sessions/${currentSessionId}/chat?query=${encodeURIComponent(prompt)}`,
       { withCredentials: true }
     );
 
@@ -564,15 +558,16 @@ export default function IntelligentDecision() {
             prev.map((s) =>
               s._id === currentSessionId
                 ? {
-                    ...s,
-                    recommendedModel: {
-                      status: "success",
-                      name: payload.data?.name ?? "",
-                      md5: payload.data?.md5 ?? "",
-                      description: payload.data?.description ?? "",
-                      workflow: payload.data?.workflow ?? [],
-                    },
-                  }
+                  ...s,
+                  recommendedModel: {
+                    status: "success",
+                    name: payload.data?.name ?? "",
+                    md5: payload.data?.md5 ?? "",
+                    description: payload.data?.description ?? "",
+                    reason: payload.data?.reason ?? "",
+                    workflow: payload.data?.workflow ?? [],
+                  },
+                }
                 : s,
             ),
           );
@@ -659,13 +654,13 @@ export default function IntelligentDecision() {
             updatedTools = updatedTools.map((t) =>
               t.kind === toolKind
                 ? {
-                    ...t,
-                    status: "success" as const,
-                    type: "tool",
-                    title: getFinishToolTitle(toolKind),
-                    result:
-                      payload.data ?? payload.result ?? payload.output ?? null,
-                  }
+                  ...t,
+                  status: "success" as const,
+                  type: "tool",
+                  title: getFinishToolTitle(toolKind),
+                  result:
+                    payload.data ?? payload.result ?? payload.output ?? null,
+                }
                 : t,
             );
 
@@ -692,6 +687,23 @@ export default function IntelligentDecision() {
             tools: updatedTools,
             started: true,
           };
+
+          if (
+            payload.type === "tool_result" &&
+            getPayloadToolKind(payload) === "search_most_model" &&
+            payload.data?.reason
+          ) {
+            const reasonMessageId = `${toolMessageId}-recommendation-reason`;
+            if (!next.some((message) => message.id === reasonMessageId)) {
+              next.push({
+                id: reasonMessageId,
+                role: "AI",
+                type: "text",
+                content: `模型推荐说明：${payload.data.reason}`,
+                started: true,
+              });
+            }
+          }
           return next;
         });
 
@@ -772,7 +784,7 @@ export default function IntelligentDecision() {
         );
 
         // 收集该文件的扫描结果
-        let fileResult: any = {
+        const fileResult: any = {
           tools: [],
           profile: null,
         };
@@ -993,7 +1005,7 @@ export default function IntelligentDecision() {
   };
 
   // 更新当前模型输入数据
-  const handleInputChange = async(name: string, value: string) => {
+  const handleInputChange = async (name: string, value: string) => {
     setUploadedData((prev) => ({
       ...prev,
       [name]: value,
@@ -1003,19 +1015,19 @@ export default function IntelligentDecision() {
       [`context.${name}`]: value,
     };
     // 调用GET接口读取持久化字段，刷新前端状态
-      const sessionResponse = await authFetch(
-        `${BACK_URL}/chat/sessions/${activeChatId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(updates),
-        }
-      );
+    const sessionResponse = await authFetch(
+      `${BACK_URL}/chat/sessions/${activeChatId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    }
+    );
 
-      if (!sessionResponse.ok) {
-        throw new Error(`Fetch session failed with status ${sessionResponse.status}`);
-      }
+    if (!sessionResponse.ok) {
+      throw new Error(`Fetch session failed with status ${sessionResponse.status}`);
+    }
 
-      await sessionResponse.json();
+    await sessionResponse.json();
   }
 
   // 右侧面板滚动引用
@@ -1259,11 +1271,10 @@ export default function IntelligentDecision() {
             return (
               <div
                 key={session._id}
-                className={`group relative w-full flex items-center gap-2 p-2 rounded-lg transition ${
-                  isActive
+                className={`group relative w-full flex items-center gap-2 p-2 rounded-lg transition ${isActive
                     ? "bg-gray-100/50 text-white"
                     : "hover:bg-gray-700 text-white"
-                }`}
+                  }`}
               >
                 <button
                   className="flex-1 text-left truncate"
@@ -1278,9 +1289,8 @@ export default function IntelligentDecision() {
                 </button>
 
                 <button
-                  className={`p-1 rounded hover:bg-gray-700 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity ${
-                    isMenuOpen ? "opacity-100" : ""
-                  }`}
+                  className={`p-1 rounded hover:bg-gray-700 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity ${isMenuOpen ? "opacity-100" : ""
+                    }`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setOpenSessionMenuId((prev) =>
@@ -1436,11 +1446,10 @@ export default function IntelligentDecision() {
                       <button
                         type="button"
                         onClick={handleToggleRecommendedModelFavorite}
-                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                          isRecommendedModelFavorited
+                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${isRecommendedModelFavorited
                             ? "border-rose-300 bg-rose-50 text-rose-600"
                             : "border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
-                        }`}
+                          }`}
                       >
                         <Heart
                           size={14}
@@ -1509,15 +1518,15 @@ export default function IntelligentDecision() {
                                     modelContract,
                                   )
                                     ? modelContract.find(
-                                        (c) =>
-                                          (c.Input_name || c.slot_name) ===
-                                          input.name,
-                                      )
+                                      (c) =>
+                                        (c.Input_name || c.slot_name) ===
+                                        input.name,
+                                    )
                                     : modelContract?.Required_slots?.find(
-                                        (c: ModelContractItem) =>
-                                          (c.Input_name || c.slot_name) ===
-                                          input.name,
-                                      );
+                                      (c: ModelContractItem) =>
+                                        (c.Input_name || c.slot_name) ===
+                                        input.name,
+                                    );
 
                                   return (
                                     <div
@@ -1592,11 +1601,10 @@ export default function IntelligentDecision() {
                                               />
                                             </label>
                                             <span
-                                              className={`text-xs truncate transition-colors ${
-                                                value instanceof File
+                                              className={`text-xs truncate transition-colors ${value instanceof File
                                                   ? "text-green-600 italic"
                                                   : "text-gray-400"
-                                              }`}
+                                                }`}
                                             >
                                               {value instanceof File
                                                 ? `"${value.name}" has been successfully uploaded!`
@@ -1609,7 +1617,7 @@ export default function IntelligentDecision() {
                                             placeholder="Please enter the input data..."
                                             value={
                                               typeof value === "string" ||
-                                              typeof value === "number"
+                                                typeof value === "number"
                                                 ? String(value)
                                                 : ""
                                             }

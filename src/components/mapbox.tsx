@@ -28,6 +28,42 @@ const LAYER_COLORS = [
   "#6366f1",
 ];
 
+const TIANDITU_TOKEN = import.meta.env.VITE_TIANDITU_TOKEN || "";
+
+const createTiandituStyle = () => ({
+  version: 8 as const,
+  sources: {
+    "tianditu-vector": {
+      type: "raster" as const,
+      tiles: [0, 1, 2].map(
+        (subdomain) =>
+          `https://t${subdomain}.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${TIANDITU_TOKEN}`,
+      ),
+      tileSize: 256,
+    },
+    "tianditu-label": {
+      type: "raster" as const,
+      tiles: [0, 1, 2].map(
+        (subdomain) =>
+          `https://t${subdomain}.tianditu.gov.cn/cva_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${TIANDITU_TOKEN}`,
+      ),
+      tileSize: 256,
+    },
+  },
+  layers: [
+    {
+      id: "tianditu-vector-layer",
+      type: "raster" as const,
+      source: "tianditu-vector",
+    },
+    {
+      id: "tianditu-label-layer",
+      type: "raster" as const,
+      source: "tianditu-label",
+    },
+  ],
+});
+
 let mapboxModulePromise: Promise<typeof import("mapbox-gl")> | null = null;
 
 const loadMapbox = () => {
@@ -292,11 +328,10 @@ export default function MapboxViewer({ geoJsonDataArray = [] }: MapboxViewerProp
 
         const mapboxgl = mapboxModule.default;
         mapboxApiRef.current = mapboxgl;
-        mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || "";
 
         const map = new mapboxgl.Map({
           container: mapContainerRef.current,
-          style: "mapbox://styles/mapbox/light-v11",
+          style: createTiandituStyle(),
           center: [104, 35],
           zoom: 4,
           attributionControl: false,

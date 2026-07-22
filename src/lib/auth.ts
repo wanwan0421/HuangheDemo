@@ -6,6 +6,8 @@ export type AuthUser = {
 };
 
 const AUTH_SESSION_KEY = "geoagent_auth_session";
+export const AUTH_EXPIRED_EVENT = "geoagent:auth-expired";
+export const AUTH_ACTIVITY_EVENT = "geoagent:auth-activity";
 const BACK_URL = import.meta.env.VITE_BACK_URL;
 const AUTH_BASE_URL =`${BACK_URL}/auth`;
 
@@ -53,6 +55,13 @@ const writeSessionUser = (user: AuthUser | null) => {
   }
   localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(user));
 };
+
+const notifyAuthExpired = () => {
+  writeSessionUser(null);
+  window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+};
+
+const isAuthExpiredStatus = (status: number) => status === 401 || status === 403;
 
 const toAuthUser = (raw: any): AuthUser | null => {
   if (!raw || typeof raw !== "object") return null;
@@ -165,24 +174,110 @@ export const login = async (payload: LoginPayload): Promise<AuthResult> => {
 
 export const fetchCurrentUser = async (): Promise<AuthUser | null> => {
   try {
-    const response = await fetch(buildAuthUrl("me"), {
+    let response = await fetch(buildAuthUrl("me"), {
       method: "GET",
       credentials: "include",
     });
 
+    if (response.status === 401) {
+      const refreshOutcome = await refreshSessionWithOutcome();
+      if (refreshOutcome === "refreshed") {
+        response = await fetch(buildAuthUrl("me"), {
+          method: "GET",
+          credentials: "include",
+        });
+      } else if (refreshOutcome === "expired") {
+        return null;
+      } else if (refreshOutcome === "failed") {
+        return readSessionUser();
+      }
+    }
+
     const data = (await response.json().catch(() => ({}))) as ApiResponse<AuthUser>;
     if (!response.ok || data.success === false) {
-      writeSessionUser(null);
-      return null;
+      if (isAuthExpiredStatus(response.status)) {
+        notifyAuthExpired();
+        return null;
+      }
+      return readSessionUser();
     }
 
     const user = toAuthUser((data.user ?? data.data) as any);
     writeSessionUser(user);
     return user;
   } catch {
-    writeSessionUser(null);
-    return null;
+    return readSessionUser();
   }
+};
+
+type RefreshOutcome = "refreshed" | "expired" | "failed";
+
+let refreshPromise: Promise<RefreshOutcome> | null = null;
+
+const refreshSessionWithOutcome = async (): Promise<RefreshOutcome> => {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(buildAuthUrl("refresh"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = (await response.json().catch(() => ({}))) as ApiResponse<any>;
+      if (!response.ok || data.success === false) {
+        if (isAuthExpiredStatus(response.status)) {
+          notifyAuthExpired();
+          return "expired";
+        }
+        return "failed";
+      }
+
+      const rawUser = (data.data as any)?.user ?? data.user ?? data.data;
+      const user = toAuthUser(rawUser);
+      if (!user) {
+        return "failed";
+      }
+      writeSessionUser(user);
+      return "refreshed";
+    } catch {
+      return "failed";
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+};
+
+export const refreshSession = async (): Promise<boolean> =>
+  (await refreshSessionWithOutcome()) === "refreshed";
+
+export const authenticatedFetch = async (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> => {
+  const requestInit: RequestInit = {
+    ...init,
+    credentials: init?.credentials ?? "include",
+  };
+  let response = await fetch(input, requestInit);
+  if (response.status === 401) {
+    const refreshOutcome = await refreshSessionWithOutcome();
+    if (refreshOutcome === "refreshed") {
+      response = await fetch(input, requestInit);
+    } else if (refreshOutcome === "expired") {
+      return response;
+    } else if (refreshOutcome === "failed") {
+      return response;
+    }
+  }
+  if (isAuthExpiredStatus(response.status)) {
+    notifyAuthExpired();
+  } else {
+    window.dispatchEvent(new CustomEvent(AUTH_ACTIVITY_EVENT));
+  }
+  return response;
 };
 
 export const logout = async (): Promise<void> => {

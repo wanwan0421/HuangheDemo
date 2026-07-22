@@ -1,21 +1,40 @@
-import { useState, useEffect } from 'react';
-import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
-import logo from '../assets/logo.png';
-import defaultAvatar from '../assets/user.png';
-import { fetchCurrentUser, getCurrentUser, logout } from '../lib/auth';
-import { getUserProfile } from '../lib/userCenter';
+import { useState, useEffect } from "react";
+import { Outlet, useLocation, Link, useNavigate } from "react-router-dom";
+import logo from "../assets/logo.png";
+import defaultAvatar from "../assets/user.png";
+import {
+  AUTH_ACTIVITY_EVENT,
+  AUTH_EXPIRED_EVENT,
+  fetchCurrentUser,
+  getCurrentUser,
+  logout,
+  refreshSession,
+} from "../lib/auth";
+import { getUserProfile } from "../lib/userCenter";
 
 // Navigation items structure remains the same
 const navItems = [
-  { key: '/', label: '首页', to: '/' },
-  { key: '/resources', label: '模拟资源', to: '/resources' },
-  { key: '/monitoring', label: '可视化', to: '/monitoring' },
+  { key: "/", label: "首页", to: "/" },
+  { key: "/resources", label: "模拟资源", to: "/resources" },
+  { key: "/monitoring", label: "数据监测", to: "/monitoring" },
   // { key: '/decision', label: '智能决策', to: '/decision' },
   // { key: '/chat', label: '聊天', to: '/chat' },
-  { key: '/simulation', label: '智能决策', to: '/simulation' },
-  { key: '/about', label: '关于', to: '/about' },
-
+  { key: "/simulation", label: "智能决策", to: "/simulation" },
+  { key: "/about", label: "关于", to: "/about" },
 ];
+
+const protectedPathPrefixes = [
+  "/resources",
+  "/monitoring",
+  "/chat",
+  "/simulation",
+  "/profile",
+];
+
+const isProtectedPath = (pathname: string) =>
+  protectedPathPrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
 
 export default function Layout() {
   const navigate = useNavigate();
@@ -23,7 +42,9 @@ export default function Layout() {
   const [darkMode, setDarkMode] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [authUser, setAuthUser] = useState(getCurrentUser());
-  const [avatar, setAvatar] = useState(getUserProfile().avatar || defaultAvatar);
+  const [avatar, setAvatar] = useState(
+    getUserProfile().avatar || defaultAvatar,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -51,35 +72,112 @@ export default function Layout() {
 
   // Determine the current path for active link highlighting
   const currentPath = location.pathname;
-  const isAuthPage = currentPath === '/login' || currentPath === '/register';
-  const showFooter = !currentPath.startsWith('/chat');
+  const isAuthPage = currentPath === "/login" || currentPath === "/register";
+  const showFooter = !currentPath.startsWith("/chat");
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setAuthUser(null);
+      if (isProtectedPath(location.pathname)) {
+        navigate("/login", {
+          replace: true,
+          state: { from: location.pathname },
+        });
+      }
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () =>
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+  }, [location.pathname, navigate]);
+
+  useEffect(() => {
+    if (isAuthPage || !authUser) return;
+
+    const idleTimeoutMs = 30 * 60 * 1000;
+    const refreshIntervalMs = 5 * 60 * 1000;
+    let lastActivityAt = Date.now();
+    let lastRefreshAt = 0;
+    let isEndingSession = false;
+
+    const markActive = () => {
+      lastActivityAt = Date.now();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") markActive();
+    };
+
+    const activityEvents: Array<keyof WindowEventMap> = [
+      "pointerdown",
+      "keydown",
+      "touchstart",
+      "scroll",
+    ];
+    activityEvents.forEach((eventName) =>
+      window.addEventListener(eventName, markActive, { passive: true }),
+    );
+    window.addEventListener(AUTH_ACTIVITY_EVENT, markActive);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    const timer = window.setInterval(async () => {
+      const now = Date.now();
+      if (now - lastActivityAt >= idleTimeoutMs) {
+        if (isEndingSession) return;
+        isEndingSession = true;
+        await logout();
+        setAuthUser(null);
+        if (isProtectedPath(location.pathname)) {
+          navigate("/login", {
+            replace: true,
+            state: { from: location.pathname },
+          });
+        }
+        return;
+      }
+
+      if (now - lastRefreshAt >= refreshIntervalMs) {
+        lastRefreshAt = now;
+        await refreshSession();
+      }
+    }, 15_000);
+
+    return () => {
+      window.clearInterval(timer);
+      activityEvents.forEach((eventName) =>
+        window.removeEventListener(eventName, markActive),
+      );
+      window.removeEventListener(AUTH_ACTIVITY_EVENT, markActive);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [authUser, isAuthPage, location.pathname, navigate]);
 
   const isNavItemActive = (itemKey: string) => {
-    if (itemKey === '/chat') {
-      return currentPath.startsWith('/chat');
+    if (itemKey === "/chat") {
+      return currentPath.startsWith("/chat");
     }
     return currentPath === itemKey;
   };
 
   // Tailwind classes for theme-dependent background and text color
-  const themeBg = darkMode ? 'bg-black text-white' : 'bg-white text-gray-800';
-  const headerBg = darkMode ? 'bg-black' : 'bg-white';
-  const footerBg = darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-100 text-gray-600';
-  const menuBg = darkMode ? 'bg-black' : 'bg-white';
+  const themeBg = darkMode ? "bg-black text-white" : "bg-white text-gray-800";
+  const headerBg = darkMode ? "bg-black" : "bg-white";
+  const footerBg = darkMode
+    ? "bg-gray-900 text-gray-400"
+    : "bg-gray-100 text-gray-600";
+  const menuBg = darkMode ? "bg-black" : "bg-white";
 
   const handleLogout = async () => {
     await logout();
     setAuthUser(null);
-    navigate('/login');
+    navigate("/login");
   };
 
   return (
-    <div className={`${isAuthPage ? 'h-screen overflow-hidden' : 'min-h-screen'} flex flex-col transition-colors duration-300 ${themeBg}`}>
-
+    <div
+      className={`${isAuthPage ? "h-screen overflow-hidden" : "min-h-screen"} flex flex-col transition-colors duration-300 ${themeBg}`}
+    >
       {/* Header area (Sticky with flex layout) */}
       <header className={`z-50 shrink-0 ${headerBg} shadow`}>
         <nav className="mx-auto flex items-center justify-between p-3">
-
           {/* Logo */}
           <div className="shrink-0">
             <img src={logo} alt="logo" className="h-10" />
@@ -113,12 +211,13 @@ export default function Layout() {
                 <Link
                   key={item.key}
                   to={item.to}
-                  className={`text-base font-medium whitespace-nowrap ${isNavItemActive(item.key)
-                    ? 'text-blue-500! border-b-2 border-blue-500 pb-1 font-semibold'
-                    : darkMode
-                      ? 'text-gray-300 hover:text-white'
-                      : 'text-gray-700 hover:text-black'
-                    }`}
+                  className={`text-base font-medium whitespace-nowrap ${
+                    isNavItemActive(item.key)
+                      ? "text-blue-500! border-b-2 border-blue-500 pb-1 font-semibold"
+                      : darkMode
+                        ? "text-gray-300 hover:text-white"
+                        : "text-gray-700 hover:text-black"
+                  }`}
                 >
                   {item.label}
                 </Link>
@@ -132,29 +231,35 @@ export default function Layout() {
                 className="flex items-center space-x-1"
               >
                 <div
-                  className={`w-10 h-5 rounded-full flex items-center transition-colors duration-300 ${darkMode ? 'bg-blue-600' : 'bg-yellow-400'
-                    }`}
+                  className={`w-10 h-5 rounded-full flex items-center transition-colors duration-300 ${
+                    darkMode ? "bg-blue-600" : "bg-yellow-400"
+                  }`}
                 >
                   <div
-                    className={`w-4 h-4 bg-white rounded-full shadow transform transition duration-300 ${darkMode ? 'translate-x-5' : 'translate-x-1'
-                      }`}
+                    className={`w-4 h-4 bg-white rounded-full shadow transform transition duration-300 ${
+                      darkMode ? "translate-x-5" : "translate-x-1"
+                    }`}
                   ></div>
                 </div>
-                <span>{darkMode ? '🌙' : '☀️'}</span>
+                <span>{darkMode ? "🌙" : "☀️"}</span>
               </button>
 
               {authUser ? (
                 <>
                   <Link to="/profile" className="inline-flex" title="个人中心">
-                    <img src={avatar} alt="avatar" className="w-8 h-8 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition object-cover" />
+                    <img
+                      src={avatar}
+                      alt="avatar"
+                      className="w-8 h-8 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition object-cover"
+                    />
                   </Link>
                   <button
                     type="button"
                     onClick={handleLogout}
                     className={`rounded-md border px-3 py-1 text-xs hover:bg-gray-700 ${
                       darkMode
-                        ? 'border-gray-600 text-gray-200'
-                        : 'border-gray-300 text-gray-800 hover:text-white'
+                        ? "border-gray-600 text-gray-200"
+                        : "border-gray-300 text-gray-800 hover:text-white"
                     }`}
                   >
                     退出登录
@@ -165,7 +270,7 @@ export default function Layout() {
                   <Link
                     to="/login"
                     className={`rounded-md border border-blue-400/40 px-3 py-1 text-sm font-medium hover:bg-blue-400/40 ${
-                      darkMode ? 'text-white' : 'text-gray-900'
+                      darkMode ? "text-white" : "text-gray-900"
                     }`}
                   >
                     登录
@@ -173,7 +278,7 @@ export default function Layout() {
                   <Link
                     to="/register"
                     className={`rounded-md border border-cyan-400/40 px-3 py-1 text-sm font-medium hover:bg-cyan-400/40 ${
-                      darkMode ? 'text-white' : 'text-gray-900'
+                      darkMode ? "text-white" : "text-gray-900"
                     }`}
                   >
                     注册
@@ -185,10 +290,14 @@ export default function Layout() {
         </nav>
 
         {/* Mobile Drawer */}
-        <div className={`lg:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition ${mobileOpen ? 'block' : 'hidden'}`}
-          onClick={() => setMobileOpen(false)}></div>
+        <div
+          className={`lg:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition ${mobileOpen ? "block" : "hidden"}`}
+          onClick={() => setMobileOpen(false)}
+        ></div>
 
-        <div className={`lg:hidden fixed top-0 left-0 h-full w-72 ${menuBg} z-50 shadow-lg transform transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div
+          className={`lg:hidden fixed top-0 left-0 h-full w-72 ${menuBg} z-50 shadow-lg transform transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        >
           <div className="p-4 flex justify-between items-center">
             <img src={logo} alt="logo" className="h-10" />
             <button
@@ -205,17 +314,17 @@ export default function Layout() {
                   key={item.key}
                   to={item.to}
                   onClick={() => setMobileOpen(false)}
-                  className={`block py-2 text-base ${isNavItemActive(item.key)
-                    ? 'text-blue-500! font-semibold'
-                    : darkMode
-                      ? 'text-gray-300 hover:text-white'
-                      : 'text-gray-700 hover:text-black'
-                    }`}
+                  className={`block py-2 text-base ${
+                    isNavItemActive(item.key)
+                      ? "text-blue-500! font-semibold"
+                      : darkMode
+                        ? "text-gray-300 hover:text-white"
+                        : "text-gray-700 hover:text-black"
+                  }`}
                 >
                   {item.label}
                 </Link>
               ))}
-
             </nav>
 
             <div className="px-4 py-5 border-t border-gray-700/20">
@@ -224,15 +333,28 @@ export default function Layout() {
                 onClick={() => setDarkMode(!darkMode)}
                 className="flex items-center space-x-2 py-2"
               >
-                <div className={`w-10 h-5 rounded-full flex items-center transition-colors ${darkMode ? 'bg-blue-600' : 'bg-yellow-400'}`}>
-                  <div className={`w-4 h-4 bg-white rounded-full shadow transform transition ${darkMode ? 'translate-x-5' : 'translate-x-1'}`}></div>
+                <div
+                  className={`w-10 h-5 rounded-full flex items-center transition-colors ${darkMode ? "bg-blue-600" : "bg-yellow-400"}`}
+                >
+                  <div
+                    className={`w-4 h-4 bg-white rounded-full shadow transform transition ${darkMode ? "translate-x-5" : "translate-x-1"}`}
+                  ></div>
                 </div>
-                <span className="text-base">{darkMode ? '🌙' : '☀️'}</span>
+                <span className="text-base">{darkMode ? "🌙" : "☀️"}</span>
               </button>
               {authUser ? (
                 <div className="flex items-center gap-3">
-                  <Link to="/profile" onClick={() => setMobileOpen(false)} className="inline-flex" title="个人中心">
-                    <img src={avatar} alt="avatar" className="w-10 h-10 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition object-cover" />
+                  <Link
+                    to="/profile"
+                    onClick={() => setMobileOpen(false)}
+                    className="inline-flex"
+                    title="个人中心"
+                  >
+                    <img
+                      src={avatar}
+                      alt="avatar"
+                      className="w-10 h-10 rounded-full ring-2 ring-transparent hover:ring-blue-400 transition object-cover"
+                    />
                   </Link>
                   <button
                     type="button"
@@ -242,8 +364,8 @@ export default function Layout() {
                     }}
                     className={`rounded-md border px-3 py-1 text-xs hover:bg-gray-700 ${
                       darkMode
-                        ? 'border-gray-600 text-gray-300'
-                        : 'border-gray-300 text-gray-800 hover:text-white'
+                        ? "border-gray-600 text-gray-300"
+                        : "border-gray-300 text-gray-800 hover:text-white"
                     }`}
                   >
                     退出登录
@@ -255,7 +377,7 @@ export default function Layout() {
                     to="/login"
                     onClick={() => setMobileOpen(false)}
                     className={`rounded-md border border-blue-400/40 px-3 py-1 text-sm font-medium hover:bg-blue-400/40 ${
-                      darkMode ? 'text-white' : 'text-gray-900'
+                      darkMode ? "text-white" : "text-gray-900"
                     }`}
                   >
                     登录
@@ -264,7 +386,7 @@ export default function Layout() {
                     to="/register"
                     onClick={() => setMobileOpen(false)}
                     className={`rounded-md border border-cyan-400/40 px-3 py-1 text-sm font-medium hover:bg-cyan-400/40 ${
-                      darkMode ? 'text-white' : 'text-gray-900'
+                      darkMode ? "text-white" : "text-gray-900"
                     }`}
                   >
                     注册
@@ -277,7 +399,9 @@ export default function Layout() {
       </header>
 
       {/* Content area */}
-      <main className={`${isAuthPage ? 'flex-1 min-h-0 overflow-hidden' : 'flex-1'}`}>
+      <main
+        className={`${isAuthPage ? "flex-1 min-h-0 overflow-hidden" : "flex-1"}`}
+      >
         {/* Router area */}
         <Outlet context={{ darkMode }} />
       </main>
